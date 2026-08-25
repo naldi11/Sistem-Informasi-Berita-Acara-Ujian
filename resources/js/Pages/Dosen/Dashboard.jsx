@@ -181,15 +181,15 @@ export default function Dashboard({ stats, todaySchedules, latestSchedules, late
                                                         );
                                                     }
                                                 }
-                                                // For mobile view, we should still show the Pilih Pengganti button if it's today
+                                                // Tampilan mobile: arahkan ke Jadwal Mengawas untuk mengajukan pengganti
                                                 return (
                                                     <div style={{ marginTop: '10px' }}>
                                                         <Link 
-                                                            href={route('dosen.delegasi')}
+                                                            href={route('dosen.jadwal')}
                                                             className="sibau-btn sibau-btn-secondary sibau-btn-sm" 
                                                             style={{ textDecoration: 'none', padding: '6px 10px', width: '100%', justifyContent: 'center' }}
                                                         >
-                                                            Pilih Pengganti
+                                                            Ajukan Pengganti
                                                         </Link>
                                                     </div>
                                                 );
@@ -262,8 +262,8 @@ export default function Dashboard({ stats, todaySchedules, latestSchedules, late
                                                                                 <svg viewBox="0 0 24 24" style={{ width: '13px', height: '13px', stroke: 'currentColor', strokeWidth: 2, fill: 'none', display: 'inline-block', marginRight: '4px' }}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                                                                                 {bau ? 'Edit BAU' : 'Isi BAU & Absen'}
                                                                             </Link>
-                                                                            <Link href={route('dosen.delegasi')} className="sibau-btn sibau-btn-secondary sibau-btn-sm" style={{ textDecoration: 'none', whiteSpace: 'nowrap', textAlign: 'center' }}>
-                                                                                Pilih Pengganti
+                                                                            <Link href={route('dosen.jadwal')} className="sibau-btn sibau-btn-secondary sibau-btn-sm" style={{ textDecoration: 'none', whiteSpace: 'nowrap', textAlign: 'center' }}>
+                                                                                Ajukan Pengganti
                                                                             </Link>
                                                                         </div>
                                                                     );
@@ -278,8 +278,8 @@ export default function Dashboard({ stats, todaySchedules, latestSchedules, late
                                                                             >
                                                                                 {state.label}
                                                                             </button>
-                                                                            <Link href={route('dosen.delegasi')} className="sibau-btn sibau-btn-secondary sibau-btn-sm" style={{ textDecoration: 'none', whiteSpace: 'nowrap', textAlign: 'center' }}>
-                                                                                Pilih Pengganti
+                                                                            <Link href={route('dosen.jadwal')} className="sibau-btn sibau-btn-secondary sibau-btn-sm" style={{ textDecoration: 'none', whiteSpace: 'nowrap', textAlign: 'center' }}>
+                                                                                Ajukan Pengganti
                                                                             </Link>
                                                                         </div>
                                                                     );

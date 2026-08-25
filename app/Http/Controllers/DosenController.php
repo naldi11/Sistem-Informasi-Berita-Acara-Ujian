@@ -115,93 +115,40 @@ class DosenController extends Controller
             'pesertaUjians' => function ($q) {
                 $q->select('id', 'jadwal_ujian_id');
             },
-            'beritaAcara'
+            'beritaAcara',
+            // Status permohonan penggantian ditampilkan langsung pada barisnya,
+            // menggantikan halaman Permohonan Penggantian yang terpisah.
+            'permohonanGantiTerakhir.pengganti:nip,nama',
         ])
             ->where('nip_dosen', $dosen->nip)
             ->orderBy('tanggal', 'desc')
             ->get();
 
-        $dosens = Dosen::where('status', 'aktif')->where('nip', '!=', $dosen->nip)->select('nip', 'nama')->get();
-
         return Inertia::render('Dosen/Jadwal', [
             'schedules' => $schedules,
-            'dosens' => $dosens,
         ]);
     }
 
-    public function delegasiJadwal(Request $request, $id)
+    /**
+     * Ajukan penggantian pengawas untuk satu jadwal.
+     *
+     * Jadwalnya diambil dari URL — dosen mengeklik tombol pada baris jadwal yang
+     * bersangkutan, jadi tidak perlu memilih jadwal lagi di dalam formulir.
+     */
+    public function storePermohonanPenggantian(Request $request, $jadwal)
     {
         $request->validate([
-            'nip_dosen' => 'required|string|exists:dosens,nip',
-        ]);
-
-        $dosen = $this->getDosen();
-        $jadwal = JadwalUjian::where('nip_dosen', $dosen->nip)->findOrFail($id);
-
-        $targetDosen = Dosen::findOrFail($request->nip_dosen);
-
-        // Validasi bentrok waktu
-        $bentrok = JadwalUjian::where('nip_dosen', $targetDosen->nip)
-            ->where('tanggal', $jadwal->tanggal)
-            ->where(function ($q) use ($jadwal) {
-                $q->where(function ($sub) use ($jadwal) {
-                    $sub->where('jam_mulai', '<=', $jadwal->jam_mulai)
-                        ->where('jam_selesai', '>', $jadwal->jam_mulai);
-                })->orWhere(function ($sub) use ($jadwal) {
-                    $sub->where('jam_mulai', '<', $jadwal->jam_selesai)
-                        ->where('jam_selesai', '>=', $jadwal->jam_selesai);
-                })->orWhere(function ($sub) use ($jadwal) {
-                    $sub->where('jam_mulai', '>=', $jadwal->jam_mulai)
-                        ->where('jam_selesai', '<=', $jadwal->jam_selesai);
-                });
-            })
-            ->first();
-
-        if ($bentrok) {
-            return back()->withErrors(['nip_dosen' => "Dosen pengganti sudah memiliki jadwal ujian lain (MK: {$bentrok->kode_mk}) pada hari dan jam yang bersinggungan."]);
-        }
-
-        $jadwal->update([
-            'nip_dosen' => $targetDosen->nip,
-        ]);
-
-        $this->log("Mendelegasikan jadwal ujian ID #{$id} ke Dosen NIP {$targetDosen->nip}");
-
-        return redirect()->back()->with('success', 'Jadwal ujian berhasil didelegasikan ke pengawas pengganti.');
-    }
-
-    public function permohonanPenggantianIndex()
-    {
-        $dosen = $this->getDosen();
-        
-        // Ambil jadwal ujian milik dosen yang belum lewat atau selesai
-        $schedules = JadwalUjian::with('mataKuliah')
-            ->where('nip_dosen', $dosen->nip)
-            ->where('status', 'terjadwal')
-            ->orderBy('tanggal', 'asc')
-            ->get();
-
-        // Ambil riwayat permohonan penggantian
-        $permohonan = PermohonanGantiPengawas::with(['jadwalUjian.mataKuliah', 'pengganti'])
-            ->where('dosen_pemohon_nip', $dosen->nip)
-            ->orderBy('created_at', 'desc')
-            ->get();
-
-        return Inertia::render('Dosen/PermohonanPenggantian', [
-            'schedules' => $schedules,
-            'permohonan' => $permohonan,
-        ]);
-    }
-
-    public function storePermohonanPenggantian(Request $request)
-    {
-        $request->validate([
-            'jadwal_ujian_id' => 'required|exists:jadwal_ujians,id',
             'alasan' => 'required|string|min:10',
         ]);
 
         $dosen = $this->getDosen();
-        $jadwal = JadwalUjian::where('nip_dosen', $dosen->nip)->findOrFail($request->jadwal_ujian_id);
+        $jadwal = JadwalUjian::where('nip_dosen', $dosen->nip)->findOrFail($jadwal);
+
+        if (in_array($jadwal->status, ['selesai', 'dibatalkan'], true)) {
+            return back()->withErrors([
+                'alasan' => 'Jadwal ini sudah ' . $jadwal->status . ', penggantian pengawas tidak dapat diajukan.',
+            ]);
+        }
 
         // Cek apakah sudah ada permohonan pending untuk jadwal ini
         $existing = PermohonanGantiPengawas::where('jadwal_ujian_id', $jadwal->id)
@@ -209,7 +156,7 @@ class DosenController extends Controller
             ->first();
 
         if ($existing) {
-            return back()->withErrors(['error' => 'Anda sudah mengajukan permohonan untuk jadwal ini dan masih menunggu konfirmasi.']);
+            return back()->withErrors(['alasan' => 'Anda sudah mengajukan permohonan untuk jadwal ini dan masih menunggu konfirmasi.']);
         }
 
         PermohonanGantiPengawas::create([

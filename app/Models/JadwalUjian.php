@@ -51,4 +51,13 @@ class JadwalUjian extends Model
     {
         return $this->hasMany(PermohonanGantiPengawas::class, 'jadwal_ujian_id');
     }
+
+    /**
+     * Permohonan penggantian pengawas paling akhir untuk jadwal ini.
+     * Dipakai halaman Jadwal Mengawas untuk menampilkan status pada barisnya.
+     */
+    public function permohonanGantiTerakhir()
+    {
+        return $this->hasOne(PermohonanGantiPengawas::class, 'jadwal_ujian_id')->latestOfMany();
+    }
 }

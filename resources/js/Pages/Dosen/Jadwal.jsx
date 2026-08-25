@@ -1,9 +1,32 @@
 import React, { useState } from 'react';
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, useForm } from '@inertiajs/react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 
 export default function Jadwal({ schedules }) {
     const [search, setSearch] = useState('');
+
+    // Jadwal yang sedang diajukan penggantinya. Diisi dari baris yang tombolnya
+    // diklik, sehingga dosen tidak perlu memilih jadwal lagi di dalam formulir.
+    const [gantiTarget, setGantiTarget] = useState(null);
+
+    const gantiForm = useForm({ alasan: '' });
+
+    const bukaGanti = (jadwal) => {
+        gantiForm.reset();
+        gantiForm.clearErrors();
+        setGantiTarget(jadwal);
+    };
+
+    const kirimGanti = (e) => {
+        e.preventDefault();
+        gantiForm.post(
+            route('dosen.jadwal.permohonan-penggantian', { jadwal: gantiTarget.id }),
+            {
+                preserveScroll: true,
+                onSuccess: () => setGantiTarget(null),
+            },
+        );
+    };
 
     const formatIndoDate = (dateStr) => {
         if (!dateStr) return '';
@@ -153,13 +176,35 @@ export default function Jadwal({ schedules }) {
                                                                 📝 {state.label}
                                                             </button>
                                                         )}
-                                                        <Link 
-                                                            href={route('dosen.delegasi')}
-                                                            className="sibau-btn sibau-btn-secondary sibau-btn-sm" 
-                                                            style={{ textDecoration: 'none', padding: '6px 10px', width: '100%', textAlign: 'center' }}
-                                                        >
-                                                            Pilih Pengganti
-                                                        </Link>
+                                                        {(() => {
+                                                            const permohonan = s.permohonan_ganti_terakhir;
+
+                                                            if (permohonan?.status === 'pending') {
+                                                                return (
+                                                                    <span className="sibau-badge badge-warning" style={{ fontSize: '8pt', textAlign: 'center', padding: '6px 10px' }}>
+                                                                        Menunggu Konfirmasi Admin
+                                                                    </span>
+                                                                );
+                                                            }
+
+                                                            return (
+                                                                <>
+                                                                    {permohonan?.status === 'ditolak' && (
+                                                                        <span className="sibau-badge badge-danger" style={{ fontSize: '7.5pt', textAlign: 'center' }}>
+                                                                            Permohonan ditolak
+                                                                        </span>
+                                                                    )}
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => bukaGanti(s)}
+                                                                        className="sibau-btn sibau-btn-secondary sibau-btn-sm"
+                                                                        style={{ padding: '6px 10px', width: '100%', textAlign: 'center' }}
+                                                                    >
+                                                                        Ajukan Pengganti
+                                                                    </button>
+                                                                </>
+                                                            );
+                                                        })()}
                                                     </div>
                                                 );
                                             })()}
@@ -176,6 +221,82 @@ export default function Jadwal({ schedules }) {
                     </table>
                 </div>
             </div>
+
+            {/* Modal pengajuan pengganti; jadwalnya sudah terkunci dari baris yang diklik */}
+            {gantiTarget && (
+                <div className="sibau-modal-overlay">
+                    <div className="sibau-modal" style={{ maxWidth: '560px' }}>
+                        <div className="sibau-modal-header">
+                            <h3 className="sibau-modal-title">Ajukan Penggantian Pengawas</h3>
+                            <button type="button" onClick={() => setGantiTarget(null)} className="sibau-modal-close">×</button>
+                        </div>
+
+                        <form onSubmit={kirimGanti}>
+                            <div className="sibau-modal-body">
+                                <div
+                                    style={{
+                                        background: 'var(--bg-subtle, #f1f5f9)',
+                                        borderRadius: '8px',
+                                        padding: '14px 16px',
+                                        marginBottom: '18px',
+                                        fontSize: '9.5pt',
+                                        lineHeight: 1.7,
+                                    }}
+                                >
+                                    <div style={{ fontWeight: 700, fontSize: '10.5pt', marginBottom: '4px' }}>
+                                        {gantiTarget.mata_kuliah?.nama_mk}
+                                    </div>
+                                    <div style={{ color: 'var(--text-muted)' }}>
+                                        {formatIndoDate(gantiTarget.tanggal)} · {gantiTarget.jam_mulai?.substring(0, 5)} – {gantiTarget.jam_selesai?.substring(0, 5)}
+                                    </div>
+                                    <div style={{ color: 'var(--text-muted)' }}>
+                                        Ruang {gantiTarget.ruang} · Kelas {gantiTarget.kelas} · {gantiTarget.jenis_ujian}
+                                    </div>
+                                </div>
+
+                                <div className="sibau-form-group">
+                                    <label className="sibau-label">Alasan Berhalangan Hadir</label>
+                                    <textarea
+                                        className="sibau-textarea"
+                                        rows={4}
+                                        value={gantiForm.data.alasan}
+                                        onChange={(e) => gantiForm.setData('alasan', e.target.value)}
+                                        placeholder="Tuliskan alasan lengkap mengapa Anda membutuhkan pengawas pengganti (minimal 10 karakter)..."
+                                        required
+                                    />
+                                    {gantiForm.errors.alasan && (
+                                        <div style={{ color: 'red', fontSize: '9pt', marginTop: '4px' }}>
+                                            {gantiForm.errors.alasan}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <p style={{ fontSize: '8.5pt', color: 'var(--text-muted)', margin: 0 }}>
+                                    Permohonan dikirim ke admin. Dosen penggantinya ditentukan dan ditugaskan oleh admin
+                                    setelah permohonan disetujui.
+                                </p>
+                            </div>
+
+                            <div className="sibau-modal-footer">
+                                <button
+                                    type="button"
+                                    onClick={() => setGantiTarget(null)}
+                                    className="sibau-btn sibau-btn-secondary"
+                                >
+                                    Batal
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="sibau-btn sibau-btn-primary"
+                                    disabled={gantiForm.processing}
+                                >
+                                    {gantiForm.processing ? 'Mengirim...' : 'Kirim Permohonan'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </AuthenticatedLayout>
     );
 }

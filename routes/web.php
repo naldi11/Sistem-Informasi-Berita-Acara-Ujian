@@ -96,12 +96,11 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
 Route::middleware(['auth', 'role:dosen'])->prefix('dosen')->group(function () {
     Route::get('/dashboard', [DosenController::class, 'dashboard'])->name('dosen.dashboard');
     Route::get('/jadwal', [DosenController::class, 'jadwalIndex'])->name('dosen.jadwal');
-    Route::get('/delegasi', [DosenController::class, 'delegasiIndex'])->name('dosen.delegasi');
-    Route::post('/jadwal/{id}/delegasi', [DosenController::class, 'delegasiJadwal'])->name('dosen.jadwal.delegasi');
-    
-    // Permohonan Penggantian
-    Route::get('/permohonan-penggantian', [DosenController::class, 'permohonanPenggantianIndex'])->name('dosen.permohonan-penggantian');
-    Route::post('/permohonan-penggantian', [DosenController::class, 'storePermohonanPenggantian'])->name('dosen.permohonan-penggantian.store');
+
+    // Permohonan penggantian pengawas diajukan langsung dari baris jadwal pada
+    // halaman Jadwal Mengawas, sehingga jadwalnya ikut dari URL.
+    Route::post('/jadwal/{jadwal}/permohonan-penggantian', [DosenController::class, 'storePermohonanPenggantian'])
+        ->name('dosen.jadwal.permohonan-penggantian');
     
     // Berita Acara Dosen
     Route::get('/berita-acara', [DosenController::class, 'beritaAcaraIndex'])->name('dosen.berita-acara');
