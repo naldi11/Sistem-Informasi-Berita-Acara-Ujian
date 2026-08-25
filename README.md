@@ -1,58 +1,156 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# SIBAU — Sistem Informasi Berita Acara Ujian
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Aplikasi pengelolaan jadwal ujian dan Berita Acara Ujian (BAU) untuk **Fakultas Ekonomi, Universitas Methodist Indonesia**.
 
-## About Laravel
+Admin fakultas menyusun jadwal ujian beserta pesertanya, dosen pengawas mengisi berita acara (kehadiran, nilai, tanda tangan mahasiswa) langsung dari aplikasi, lalu admin memvalidasinya menjadi dokumen resmi yang bisa dicetak ke PDF atau direkap ke Excel.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Teknologi
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+| Lapisan | Teknologi |
+| --- | --- |
+| Backend | PHP 8.4, Laravel 13 |
+| Frontend | Inertia.js 2 + React 18, Tailwind CSS 3, Vite 8 |
+| Basis data | MySQL (SQLite in-memory untuk pengujian) |
+| Dokumen | DomPDF (cetak BAU), PhpSpreadsheet (import/export Excel) |
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Kebutuhan
 
-## Learning Laravel
+- **PHP 8.4 atau lebih baru** (`composer.lock` mengunci Symfony 8 yang mensyaratkan PHP ≥ 8.4.1). Pada MAMP, gunakan `/Applications/MAMP/bin/php/php8.4.x/bin/php`.
+- Composer 2
+- Node.js 20+ dan npm
+- MySQL 8 / MariaDB 10.6+
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+## Instalasi
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+composer install
+cp .env.example .env
+php artisan key:generate
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+Sesuaikan `DB_*` di `.env` (bawaan mengarah ke MAMP, port `8889`), lalu isi `SIBAU_ADMIN_PASSWORD` dengan kata sandi admin awal.
 
-## Contributing
+```bash
+php artisan migrate --seed
+npm install
+npm run build
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+Seeder membuat satu akun administrator (`SIBAU_ADMIN_EMAIL`, bawaan `admin@umi.ac.id`) dan empat program studi. Data dosen, mahasiswa, mata kuliah, dan jadwal diisi lewat menu **Import Excel** di dalam aplikasi.
 
-## Code of Conduct
+Menjalankan server pengembangan (Laravel + queue + log + Vite sekaligus):
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```bash
+composer dev
+```
 
-## Security Vulnerabilities
+## Peran pengguna
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+| Peran | Kemampuan |
+| --- | --- |
+| **admin** | CRUD program studi, mata kuliah, dosen, mahasiswa, dan jadwal ujian; import Excel; validasi BAU; rekap laporan (PDF/Excel); kelola akun staf |
+| **dosen** | Melihat jadwal mengawas; mengisi & mengajukan BAU; mencetak BAU miliknya; melihat arsip BAU tervalidasi |
 
-## License
+**Registrasi mandiri sengaja dinonaktifkan.** Akun hanya dibuat oleh admin melalui menu *Pengaturan → Staf* atau *Data Dosen*, atau dibuat otomatis saat import dosen.
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+### Kata sandi akun hasil import
+
+Akun dosen yang **baru** dibuat oleh import Excel memakai kata sandi bawaan dari `SIBAU_IMPORT_DEFAULT_PASSWORD` (lihat `config/sibau.php`). Nilai bawaannya `password` agar mudah dipakai saat demo, dan ditampilkan pada panel import supaya admin tahu apa yang harus disampaikan ke dosen.
+
+Untuk penggunaan sungguhan, **kosongkan** nilainya di `.env`:
+
+```dotenv
+SIBAU_IMPORT_DEFAULT_PASSWORD=
+```
+
+Setiap akun baru lalu mendapat kata sandi acak, dan admin menyetelnya per dosen lewat tombol ✏️ Edit — atau dosen memakai fitur *Lupa Password* (butuh SMTP aktif; dengan `MAIL_MAILER=log`, tautan reset hanya muncul di `storage/logs/laravel.log`).
+
+Apa pun nilainya, import **tidak pernah** mengubah kata sandi akun yang sudah ada.
+
+## Alur Berita Acara
+
+```
+Admin menyusun jadwal + memilih peserta
+        │
+        ▼
+Dosen mengisi kehadiran, nilai, tanda tangan   ──►  status BAU: draft
+        │  (Kirim Berita Acara)
+        ▼
+                                               ──►  status BAU: menunggu_validasi
+        │                                            status jadwal: berlangsung
+        ▼
+Admin memvalidasi                              ──►  status BAU: tervalidasi
+                                                    status jadwal: selesai
+```
+
+Transisi status yang diizinkan:
+
+- `draft` → *(hanya dosen, lewat pengajuan)* → `menunggu_validasi`
+- `menunggu_validasi` → `tervalidasi` (validasi) atau `draft` (dikembalikan untuk revisi)
+- `tervalidasi` → `menunggu_validasi` (batalkan validasi)
+
+BAU berstatus `draft` **tidak dapat langsung divalidasi** karena belum diajukan dosen. BAU yang sudah `tervalidasi` terkunci: dosen tidak bisa mengubahnya, dan jadwalnya tidak bisa diedit atau dihapus sebelum validasinya dibatalkan.
+
+## Aturan penjadwalan
+
+Saat menyimpan jadwal ujian, sistem menolak bila:
+
+1. Dosen yang dipilih adalah **pengampu teori** mata kuliah tersebut di kelas yang sama (khusus mata kuliah teori murni, tanpa komponen praktek).
+2. **Ruang** sudah dipakai ujian lain pada rentang waktu yang beririsan.
+3. **Pengawas** sudah ditugaskan di ujian lain pada rentang waktu yang beririsan.
+4. Ada **mahasiswa** yang sudah terdaftar pada ujian lain di rentang waktu yang beririsan.
+
+Jadwal berstatus `dibatalkan` tidak dihitung sebagai bentrok.
+
+## Import Excel
+
+Unduh templatnya lebih dulu dari menu terkait — tombol *Download Template* menghasilkan berkas dengan header dan satu baris contoh.
+
+| Jenis | Baris header | Kolom |
+| --- | --- | --- |
+| Dosen | 1 | NIP, Nama, Kode Prodi, Jabatan, Email (opsional), Kode MK diampu (pisah koma), Kelas diampu (pisah koma) |
+| Mahasiswa | 1 | NIM, Nama, Kode Prodi, Angkatan, Kelas |
+| Mata Kuliah | 1 | Kode MK, Nama MK, SKS, Kode Prodi, Semester, Teori (Ya/Tidak), Praktek (Ya/Tidak) |
+| Jadwal Ujian | 5 (data mulai baris 6) | Hari/Tanggal, Jam, Ruang 1, Ruang 2, Mata Kuliah, SKS, Kls, Jml Mhs, Dosen |
+
+Catatan penting:
+
+- Import **tidak** mengisi peserta ujian. Setelah import jadwal, buka *Jadwal Ujian → Edit* untuk memilih peserta tiap jadwal.
+- Baris yang tanggal/jamnya tidak terbaca, atau yang nama dosen/ruangnya kosong, **dilewati** dan dilaporkan jumlah beserta alasannya — bukan diisi nilai karangan.
+- Import **tidak pernah** menimpa kata sandi akun dosen yang sudah ada; lihat *Kata sandi akun hasil import* di atas.
+
+## Pengujian
+
+```bash
+php artisan test
+```
+
+Berjalan di atas SQLite in-memory, jadi tidak menyentuh basis data pengembangan.
+
+| Berkas | Cakupan |
+| --- | --- |
+| `tests/Feature/AksesAkunTest.php` | Registrasi tertutup, penolakan akun nonaktif, pemisahan peran |
+| `tests/Feature/JadwalValidationTest.php` | Larangan dosen pengampu mengawas kelasnya |
+| `tests/Feature/JadwalConflictTest.php` | Bentrok ruang, pengawas, dan peserta |
+| `tests/Feature/BeritaAcaraTest.php` | Pengisian BAU, sinkronisasi peserta, transisi status validasi |
+| `tests/Feature/AdminImportTest.php` | Import Excel: validasi, baris dilewati, penanganan kata sandi |
+| `tests/Feature/LaporanExportTest.php` | Ekspor PDF/Excel dan ukuran muatan halaman |
+
+Linting frontend:
+
+```bash
+npm run lint
+```
+
+## Struktur singkat
+
+```
+app/
+  Http/Controllers/AdminController.php   Seluruh fitur admin
+  Http/Controllers/DosenController.php   Fitur dosen pengawas
+  Http/Middleware/RoleMiddleware.php     Pembatasan peran + cek akun aktif
+  Support/JadwalValidator.php            Aturan pengampu & deteksi bentrok
+  Support/TanggalIndonesia.php           Format & parsing tanggal Indonesia
+resources/js/Pages/                      Halaman React (Inertia)
+resources/views/pdf/                     Templat cetak BAU & rekap laporan
+```

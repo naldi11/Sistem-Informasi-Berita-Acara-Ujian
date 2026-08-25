@@ -1,26 +1,41 @@
-import React, { useState } from 'react';
-import { Head, Link } from '@inertiajs/react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Head, Link, router } from '@inertiajs/react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import Pagination from '@/Components/Pagination';
 
-export default function Jadwal({ schedules }) {
-    const [search, setSearch] = useState('');
+export default function Jadwal({ schedules, filters = {} }) {
+    const [search, setSearch] = useState(filters.cari || '');
 
-    const filteredSchedules = schedules.filter(s => 
-        s.mata_kuliah.nama_mk.toLowerCase().includes(search.toLowerCase()) ||
-        s.ruang.toLowerCase().includes(search.toLowerCase())
-    );
+    const pencarianPertama = useRef(true);
+    useEffect(() => {
+        if (pencarianPertama.current) {
+            pencarianPertama.current = false;
+            return;
+        }
+        const timer = setTimeout(() => {
+            router.get(
+                route('dosen.jadwal'),
+                { cari: search },
+                { preserveState: true, preserveScroll: true, replace: true },
+            );
+        }, 350);
+        return () => clearTimeout(timer);
+    }, [search]);
 
     return (
         <AuthenticatedLayout subtitle="Jadwal Mengawas Ujian Saya">
             <Head title="Jadwal Mengawas - SIBAU" />
             {/* Filter */}
-            <div className="sibau-card" style={{ padding: '20px', marginBottom: '24px' }}>
-                <input 
-                    type="text" 
-                    className="sibau-input" 
-                    placeholder="Cari mata kuliah atau ruang..." 
+            <div
+                className="sibau-card"
+                style={{ padding: '20px', marginBottom: '24px' }}
+            >
+                <input
+                    type="text"
+                    className="sibau-input"
+                    placeholder="Cari mata kuliah atau ruang..."
                     value={search}
-                    onChange={e => setSearch(e.target.value)}
+                    onChange={(e) => setSearch(e.target.value)}
                     style={{ maxWidth: '350px' }}
                 />
             </div>
@@ -43,56 +58,99 @@ export default function Jadwal({ schedules }) {
                             </tr>
                         </thead>
                         <tbody>
-                            {filteredSchedules.map((s) => (
+                            {schedules.data.map((s) => (
                                 <tr key={s.id}>
                                     <td>
-                                        <div style={{ fontWeight: '600' }}>{s.mata_kuliah.nama_mk}</div>
-                                        <div style={{ fontSize: '8.5pt', color: 'var(--text-muted)' }}>{s.kode_mk}</div>
+                                        <div style={{ fontWeight: '600' }}>
+                                            {s.mata_kuliah.nama_mk}
+                                        </div>
+                                        <div
+                                            style={{
+                                                fontSize: '8.5pt',
+                                                color: 'var(--text-muted)',
+                                            }}
+                                        >
+                                            {s.kode_mk}
+                                        </div>
                                     </td>
                                     <td>{s.tanggal}</td>
-                                    <td>{s.jam_mulai.substring(0, 5)} - {s.jam_selesai.substring(0, 5)}</td>
+                                    <td>
+                                        {s.jam_mulai.substring(0, 5)} -{' '}
+                                        {s.jam_selesai.substring(0, 5)}
+                                    </td>
                                     <td>{s.ruang}</td>
                                     <td>Kelas {s.kelas}</td>
                                     <td className="text-center">
-                                        <span className={`sibau-badge ${s.jenis_ujian === 'UTS' ? 'badge-info' : 'badge-success'}`}>
+                                        <span
+                                            className={`sibau-badge ${s.jenis_ujian === 'UTS' ? 'badge-info' : 'badge-success'}`}
+                                        >
                                             {s.jenis_ujian}
                                         </span>
                                     </td>
                                     <td className="text-center">
-                                        <strong>{s.peserta_ujians.length}</strong> mahasiswa
+                                        <strong>
+                                            {s.peserta_ujians_count}
+                                        </strong>{' '}
+                                        mahasiswa
                                     </td>
                                     <td>
-                                        <span className={`sibau-badge ${
-                                            s.status === 'terjadwal' ? 'badge-info' : 
-                                            s.status === 'berlangsung' ? 'badge-warning' : 
-                                            s.status === 'selesai' ? 'badge-success' : 'badge-danger'
-                                        }`}>
+                                        <span
+                                            className={`sibau-badge ${
+                                                s.status === 'terjadwal'
+                                                    ? 'badge-info'
+                                                    : s.status === 'berlangsung'
+                                                      ? 'badge-warning'
+                                                      : s.status === 'selesai'
+                                                        ? 'badge-success'
+                                                        : 'badge-danger'
+                                            }`}
+                                        >
                                             {s.status}
                                         </span>
                                     </td>
                                     <td>
-                                        {s.status !== 'selesai' && s.status !== 'dibatalkan' ? (
-                                            <Link 
-                                                href={route('dosen.berita-acara.input', { jadwal_id: s.id })} 
+                                        {s.status !== 'selesai' &&
+                                        s.status !== 'dibatalkan' ? (
+                                            <Link
+                                                href={route(
+                                                    'dosen.berita-acara.input',
+                                                    { jadwal_id: s.id },
+                                                )}
                                                 className="sibau-btn sibau-btn-primary sibau-btn-sm"
-                                                style={{ textDecoration: 'none' }}
+                                                style={{
+                                                    textDecoration: 'none',
+                                                }}
                                             >
                                                 📝 Isi BAU
                                             </Link>
                                         ) : (
-                                            <span style={{ fontSize: '9pt', color: 'var(--text-muted)' }}>Tervalidasi / Selesai</span>
+                                            <span
+                                                style={{
+                                                    fontSize: '9pt',
+                                                    color: 'var(--text-muted)',
+                                                }}
+                                            >
+                                                Tervalidasi / Selesai
+                                            </span>
                                         )}
                                     </td>
                                 </tr>
                             ))}
-                            {filteredSchedules.length === 0 && (
+                            {schedules.data.length === 0 && (
                                 <tr>
-                                    <td colspan="9" className="text-center" style={{ color: 'var(--text-muted)' }}>Jadwal mengawas tidak ditemukan.</td>
+                                    <td
+                                        colSpan={9}
+                                        className="text-center"
+                                        style={{ color: 'var(--text-muted)' }}
+                                    >
+                                        Jadwal mengawas tidak ditemukan.
+                                    </td>
                                 </tr>
                             )}
                         </tbody>
                     </table>
                 </div>
+                <Pagination paginator={schedules} />
             </div>
         </AuthenticatedLayout>
     );

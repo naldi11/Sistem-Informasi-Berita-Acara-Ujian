@@ -25,3 +25,7 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Dokumen kerja & data mentah kampus (jadwal, absensi, draf skripsi).
+# Disimpan lokal, tidak ikut repositori.
+/perlengkapan

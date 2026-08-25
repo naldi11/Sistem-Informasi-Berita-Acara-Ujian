@@ -29,8 +29,25 @@ class UserFactory extends Factory
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
+            // role & status disetel eksplisit: nilai default kolom tidak terisi
+            // pada instance model hasil create(), sehingga Auth::user()->status
+            // akan null dan pemeriksaan akun aktif gagal.
+            'role' => 'dosen',
+            'status' => 'aktif',
             'remember_token' => Str::random(10),
         ];
+    }
+
+    /** Akun administrator fakultas. */
+    public function admin(): static
+    {
+        return $this->state(fn () => ['role' => 'admin']);
+    }
+
+    /** Akun yang sudah dinonaktifkan. */
+    public function nonaktif(): static
+    {
+        return $this->state(fn () => ['status' => 'nonaktif']);
     }
 
     /**

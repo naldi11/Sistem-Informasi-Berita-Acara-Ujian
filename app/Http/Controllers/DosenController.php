@@ -11,10 +11,13 @@ use App\Models\PesertaUjian;
 use App\Models\BeritaAcara;
 use App\Models\ActivityLog;
 use App\Models\Dosen;
+use App\Support\TanggalIndonesia;
 use Barryvdh\DomPDF\Facade\Pdf;
 
 class DosenController extends Controller
 {
+    private const PER_PAGE = 25;
+
     private function log($activity)
     {
         ActivityLog::create([
@@ -23,30 +26,25 @@ class DosenController extends Controller
         ]);
     }
 
-    private function getDosen()
+    private function getDosen(): Dosen
     {
         $user = Auth::user();
+
         if (!$user) {
             abort(403, 'Anda tidak terautentikasi.');
         }
 
         $dosen = $user->dosen;
-        if (!$dosen && $user->nip) {
-            // Automatically self-heal the missing Dosen profile
-            $dosen = Dosen::create([
-                'nip' => $user->nip,
-                'nama' => $user->name,
-                'kode_prodi' => 'AKT', // default fallback
-                'jabatan' => 'Lektor', // default fallback
-                'status' => 'aktif',
-            ]);
-            
-            // Reload relationship
-            $user->load('dosen');
+
+        // Sebelumnya profil yang hilang dibuat otomatis dengan prodi & jabatan
+        // karangan ('AKT'/'Lektor'). Itu memalsukan data master secara diam-diam,
+        // jadi sekarang sistem menolak dan meminta admin melengkapinya.
+        if (!$dosen) {
+            abort(403, 'Profil dosen untuk akun ini belum terdaftar. Hubungi administrator untuk melengkapi data dosen Anda.');
         }
 
-        if (!$dosen) {
-            abort(403, 'Profil Dosen tidak ditemukan.');
+        if ($dosen->status !== 'aktif') {
+            abort(403, 'Status kepegawaian Anda tidak aktif. Hubungi administrator.');
         }
 
         return $dosen;
@@ -56,46 +54,38 @@ class DosenController extends Controller
     {
         $dosen = $this->getDosen();
 
-        $mySchedulesCount = JadwalUjian::where('nip_dosen', $dosen->nip)->count();
-        
-        $pendingBAU = BeritaAcara::whereHas('jadwalUjian', function ($q) use ($dosen) {
-            $q->where('nip_dosen', $dosen->nip);
-        })->where('status_validasi', 'menunggu_validasi')->count();
+        // Satu query bergrup untuk seluruh cacahan status BAU.
+        $bauCounts = BeritaAcara::query()
+            ->whereHas('jadwalUjian', fn ($q) => $q->where('nip_dosen', $dosen->nip))
+            ->selectRaw('status_validasi, COUNT(*) as jumlah')
+            ->groupBy('status_validasi')
+            ->pluck('jumlah', 'status_validasi');
 
-        $validatedBAU = BeritaAcara::whereHas('jadwalUjian', function ($q) use ($dosen) {
-            $q->where('nip_dosen', $dosen->nip);
-        })->where('status_validasi', 'tervalidasi')->count();
-
-        $draftBAU = BeritaAcara::whereHas('jadwalUjian', function ($q) use ($dosen) {
-            $q->where('nip_dosen', $dosen->nip);
-        })->where('status_validasi', 'draft')->count();
-
-        // Get schedules for today or currently in progress
-        $todaySchedules = JadwalUjian::with('mataKuliah')
+        $todaySchedules = JadwalUjian::with('mataKuliah:kode_mk,nama_mk')
             ->where('nip_dosen', $dosen->nip)
             ->where(function ($query) {
-                $query->where('tanggal', date('Y-m-d'))
-                      ->orWhere('status', 'berlangsung');
+                $query->where('tanggal', date('Y-m-d'))->orWhere('status', 'berlangsung');
             })
+            ->orderBy('jam_mulai')
             ->get();
 
-        $latestSchedules = JadwalUjian::with('mataKuliah')
+        $latestSchedules = JadwalUjian::with('mataKuliah:kode_mk,nama_mk')
             ->where('nip_dosen', $dosen->nip)
             ->orderBy('tanggal', 'desc')
             ->limit(5)
             ->get();
 
         $latestLogs = ActivityLog::where('user_id', Auth::id())
-            ->orderBy('created_at', 'desc')
+            ->latest()
             ->limit(5)
             ->get();
 
         return Inertia::render('Dosen/Dashboard', [
             'stats' => [
-                'total_jadwal' => $mySchedulesCount,
-                'pending_bau' => $pendingBAU,
-                'validated_bau' => $validatedBAU,
-                'draft_bau' => $draftBAU,
+                'total_jadwal' => JadwalUjian::where('nip_dosen', $dosen->nip)->count(),
+                'pending_bau' => $bauCounts['menunggu_validasi'] ?? 0,
+                'validated_bau' => $bauCounts['tervalidasi'] ?? 0,
+                'draft_bau' => $bauCounts['draft'] ?? 0,
             ],
             'todaySchedules' => $todaySchedules,
             'latestSchedules' => $latestSchedules,
@@ -103,146 +93,189 @@ class DosenController extends Controller
         ]);
     }
 
-    public function jadwalIndex()
+    public function jadwalIndex(Request $request)
     {
         $dosen = $this->getDosen();
-        $schedules = JadwalUjian::with(['mataKuliah', 'pesertaUjians.mahasiswa'])
+        $cari = trim((string) $request->query('cari', ''));
+
+        $schedules = JadwalUjian::query()
+            // Tanpa select eksplisit, seluruh tanda tangan base64 peserta ikut
+            // terkirim ke browser padahal halaman ini tidak menampilkannya.
+            ->with('mataKuliah:kode_mk,nama_mk')
+            ->withCount('pesertaUjians')
             ->where('nip_dosen', $dosen->nip)
+            ->when($cari !== '', fn ($q) => $q->where(function ($sub) use ($cari) {
+                $sub->where('kelas', 'like', "%{$cari}%")
+                    ->orWhere('ruang', 'like', "%{$cari}%")
+                    ->orWhereHas('mataKuliah', fn ($m) => $m->where('nama_mk', 'like', "%{$cari}%"));
+            }))
             ->orderBy('tanggal', 'desc')
-            ->get();
+            ->orderBy('jam_mulai', 'desc')
+            ->paginate(self::PER_PAGE)
+            ->withQueryString();
 
         return Inertia::render('Dosen/Jadwal', [
             'schedules' => $schedules,
+            'filters' => ['cari' => $cari],
         ]);
     }
 
-    public function beritaAcaraIndex()
+    public function beritaAcaraIndex(Request $request)
     {
         $dosen = $this->getDosen();
-        
-        // Get all schedules for the lecturer along with their berita acara
-        $schedules = JadwalUjian::with(['mataKuliah', 'beritaAcara'])
+        $cari = trim((string) $request->query('cari', ''));
+
+        $schedules = JadwalUjian::query()
+            ->with(['mataKuliah:kode_mk,nama_mk', 'beritaAcara'])
+            ->withCount('pesertaUjians')
             ->where('nip_dosen', $dosen->nip)
+            ->when($cari !== '', fn ($q) => $q->where(function ($sub) use ($cari) {
+                $sub->where('kelas', 'like', "%{$cari}%")
+                    ->orWhereHas('mataKuliah', fn ($m) => $m->where('nama_mk', 'like', "%{$cari}%"));
+            }))
             ->orderBy('tanggal', 'desc')
-            ->get();
+            ->paginate(self::PER_PAGE)
+            ->withQueryString();
 
         return Inertia::render('Dosen/BeritaAcaraList', [
             'schedules' => $schedules,
+            'filters' => ['cari' => $cari],
         ]);
     }
 
     public function inputBeritaAcara($jadwal_id)
     {
         $dosen = $this->getDosen();
-        
+
         $schedule = JadwalUjian::with(['mataKuliah', 'pesertaUjians.mahasiswa', 'beritaAcara'])
             ->where('nip_dosen', $dosen->nip)
             ->findOrFail($jadwal_id);
 
         return Inertia::render('Dosen/InputBAU', [
             'schedule' => $schedule,
+            // Berita Acara yang sudah tervalidasi hanya bisa dilihat, tidak diubah.
+            'terkunci' => $schedule->beritaAcara?->status_validasi === 'tervalidasi',
         ]);
     }
 
     public function saveBeritaAcara(Request $request, $jadwal_id)
     {
         $dosen = $this->getDosen();
-        $schedule = JadwalUjian::where('nip_dosen', $dosen->nip)->findOrFail($jadwal_id);
+        $schedule = JadwalUjian::with('beritaAcara')
+            ->where('nip_dosen', $dosen->nip)
+            ->findOrFail($jadwal_id);
 
-        $request->validate([
-            'jam_mulai_aktual' => 'required',
-            'jam_selesai_aktual' => 'required',
-            'catatan' => 'nullable|string',
+        if ($schedule->beritaAcara?->status_validasi === 'tervalidasi') {
+            return redirect()->route('dosen.berita-acara')->with(
+                'error',
+                'Berita Acara ini sudah divalidasi dan tidak dapat diubah lagi.'
+            );
+        }
+
+        // Kunci kehadiran hanya boleh berisi NIM yang benar-benar peserta ujian ini.
+        $nimPeserta = PesertaUjian::where('jadwal_ujian_id', $schedule->id)->pluck('nim')->all();
+
+        $validated = $request->validate([
+            'jam_mulai_aktual' => 'required|date_format:H:i,H:i:s',
+            'jam_selesai_aktual' => 'required|date_format:H:i,H:i:s|after:jam_mulai_aktual',
+            'catatan' => 'nullable|string|max:2000',
             'status_validasi' => 'required|in:draft,menunggu_validasi',
-            'attendance' => 'required|array', // key is student nim, value is 'hadir' or 'absen'
-            'nilai' => 'nullable|array', // key is student nim, value is numeric
-            'signatures' => 'nullable|array', // key is student nim, value is base64 signature string
+            'attendance' => 'required|array',
+            'attendance.*' => 'required|in:hadir,absen,belum_ditentukan',
+            'nilai' => 'nullable|array',
+            'nilai.*' => 'nullable|numeric|min:0|max:100',
+            'signatures' => 'nullable|array',
+            'signatures.*' => 'nullable|string',
         ]);
 
-        DB::transaction(function () use ($request, $schedule, $jadwal_id) {
-            // Calculate total hadir/absen
-            $hadir = 0;
-            $absen = 0;
-            foreach ($request->attendance as $nim => $status) {
-                if ($status === 'hadir') $hadir++;
-                else if ($status === 'absen') $absen++;
+        $nimAsing = array_diff(array_keys($validated['attendance']), $nimPeserta);
+        if ($nimAsing) {
+            return redirect()->back()->withErrors([
+                'attendance' => 'Terdapat NIM yang bukan peserta ujian ini: ' . implode(', ', array_slice($nimAsing, 0, 5)) . '.',
+            ]);
+        }
+
+        $nilai = $validated['nilai'] ?? [];
+        $signatures = $validated['signatures'] ?? [];
+
+        DB::transaction(function () use ($validated, $nilai, $signatures, $schedule) {
+            foreach ($validated['attendance'] as $nim => $status) {
+                // Kolom hanya ditimpa bila memang dikirim, supaya pengiriman
+                // sebagian tidak menghapus nilai atau tanda tangan yang sudah ada.
+                $perubahan = ['kehadiran' => $status];
+                if (array_key_exists($nim, $nilai)) {
+                    $perubahan['nilai'] = $nilai[$nim];
+                }
+                if (array_key_exists($nim, $signatures)) {
+                    $perubahan['tanda_tangan'] = $signatures[$nim];
+                }
 
                 PesertaUjian::where('jadwal_ujian_id', $schedule->id)
                     ->where('nim', $nim)
-                    ->update([
-                        'kehadiran' => $status,
-                        'nilai' => $request->nilai[$nim] ?? null,
-                        'tanda_tangan' => $request->signatures[$nim] ?? null,
-                    ]);
+                    ->update($perubahan);
             }
 
-            // Create or update Berita Acara
-            BeritaAcara::updateOrCreate([
-                'jadwal_ujian_id' => $schedule->id,
-            ], [
-                'jam_mulai_aktual' => $request->jam_mulai_aktual,
-                'jam_selesai_aktual' => $request->jam_selesai_aktual,
-                'catatan' => $request->catatan,
-                'jumlah_hadir' => $hadir,
-                'jumlah_absen' => $absen,
-                'status_validasi' => $request->status_validasi,
-            ]);
+            // Rekap dihitung ulang dari basis data, bukan dari cacahan yang
+            // dikirim browser, supaya angka pada Berita Acara selalu cocok
+            // dengan daftar peserta yang tersimpan.
+            $rekap = PesertaUjian::where('jadwal_ujian_id', $schedule->id)
+                ->selectRaw('kehadiran, COUNT(*) as jumlah')
+                ->groupBy('kehadiran')
+                ->pluck('jumlah', 'kehadiran');
 
-            // Update schedule status
-            if ($request->status_validasi === 'menunggu_validasi') {
-                $schedule->update([
-                    'status' => 'berlangsung',
-                ]);
-            } else {
-                $schedule->update([
-                    'status' => 'terjadwal',
-                ]);
+            $diajukan = $validated['status_validasi'] === 'menunggu_validasi';
+
+            BeritaAcara::updateOrCreate(
+                ['jadwal_ujian_id' => $schedule->id],
+                [
+                    'jam_mulai_aktual' => $validated['jam_mulai_aktual'],
+                    'jam_selesai_aktual' => $validated['jam_selesai_aktual'],
+                    'catatan' => $validated['catatan'] ?? null,
+                    'jumlah_hadir' => $rekap['hadir'] ?? 0,
+                    'jumlah_absen' => $rekap['absen'] ?? 0,
+                    'status_validasi' => $validated['status_validasi'],
+                    'diajukan_pada' => $diajukan ? now() : null,
+                ]
+            );
+
+            // Hanya pengajuan yang memajukan status jadwal. Menyimpan draft tidak
+            // boleh menimpa status 'selesai' atau 'dibatalkan' yang sudah ada.
+            if ($diajukan && $schedule->status !== 'selesai') {
+                $schedule->update(['status' => 'berlangsung']);
             }
         });
 
-        $this->log("Mengisi Berita Acara Ujian Jadwal #{$jadwal_id} sebagai {$request->status_validasi}");
+        $this->log("Mengisi Berita Acara Ujian Jadwal #{$jadwal_id} sebagai {$validated['status_validasi']}");
+
         return redirect()->route('dosen.berita-acara')->with('success', 'Berita Acara berhasil disimpan.');
     }
 
     public function printPdf($id)
     {
         $dosen = $this->getDosen();
-        
+
         $bau = BeritaAcara::with(['jadwalUjian.mataKuliah', 'jadwalUjian.dosen', 'jadwalUjian.pesertaUjians.mahasiswa'])
-            ->whereHas('jadwalUjian', function ($q) use ($dosen) {
-                $q->where('nip_dosen', $dosen->nip);
-            })
+            ->whereHas('jadwalUjian', fn ($q) => $q->where('nip_dosen', $dosen->nip))
             ->findOrFail($id);
-
-        $days = ['Sunday' => 'Minggu', 'Monday' => 'Senin', 'Tuesday' => 'Selasa', 'Wednesday' => 'Rabu', 'Thursday' => 'Kamis', 'Friday' => 'Jumat', 'Saturday' => 'Sabtu'];
-        $months = ['01' => 'Januari', '02' => 'Februari', '03' => 'Maret', '04' => 'April', '05' => 'Mei', '06' => 'Juni', '07' => 'Juli', '08' => 'Agustus', '09' => 'September', '10' => 'Oktober', '11' => 'November', '12' => 'Desember'];
-
-        $dt = new \DateTime($bau->jadwalUjian->tanggal);
-        $dayName = $days[$dt->format('l')];
-        $dayNum = $dt->format('d');
-        $monthName = $months[$dt->format('m')];
-        $year = $dt->format('Y');
 
         $pdf = Pdf::loadView('pdf.berita_acara', [
             'bau' => $bau,
-            'dayName' => $dayName,
-            'dayNum' => $dayNum,
-            'monthName' => $monthName,
-            'year' => $year,
-        ]);
+        ] + TanggalIndonesia::uraikan($bau->jadwalUjian->tanggal));
 
         return $pdf->stream("Berita_Acara_Ujian_{$bau->jadwalUjian->mataKuliah->nama_mk}_{$bau->jadwalUjian->kelas}.pdf");
     }
 
-    public function laporanIndex()
+    public function laporanIndex(Request $request)
     {
         $dosen = $this->getDosen();
-        $baus = BeritaAcara::with(['jadwalUjian.mataKuliah', 'jadwalUjian.dosen'])
-            ->whereHas('jadwalUjian', function ($q) use ($dosen) {
-                $q->where('nip_dosen', $dosen->nip);
-            })
+
+        $baus = BeritaAcara::query()
+            ->with(['jadwalUjian.mataKuliah:kode_mk,nama_mk', 'jadwalUjian.dosen:nip,nama'])
+            ->whereHas('jadwalUjian', fn ($q) => $q->where('nip_dosen', $dosen->nip))
             ->where('status_validasi', 'tervalidasi')
-            ->get();
+            ->latest('divalidasi_pada')
+            ->paginate(self::PER_PAGE)
+            ->withQueryString();
 
         return Inertia::render('Dosen/Laporan', [
             'baus' => $baus,

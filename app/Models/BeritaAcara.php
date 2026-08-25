@@ -20,10 +20,23 @@ class BeritaAcara extends Model
         'jumlah_absen',
         'status_validasi',
         'file_pdf',
+        'divalidasi_oleh',
+        'divalidasi_pada',
+        'diajukan_pada',
+    ];
+
+    protected $casts = [
+        'divalidasi_pada' => 'datetime',
+        'diajukan_pada' => 'datetime',
     ];
 
     public function jadwalUjian()
     {
         return $this->belongsTo(JadwalUjian::class, 'jadwal_ujian_id', 'id');
+    }
+
+    public function validator()
+    {
+        return $this->belongsTo(User::class, 'divalidasi_oleh', 'id');
     }
 }
