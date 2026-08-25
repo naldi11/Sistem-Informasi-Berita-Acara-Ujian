@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Head, useForm } from '@inertiajs/react';
 import InputError from '@/Components/InputError';
 
 export default function Login({ status }) {
+    const [showPassword, setShowPassword] = useState(false);
     const { data, setData, post, processing, errors, reset } = useForm({
         email: '',
         password: '',
@@ -18,12 +19,12 @@ export default function Login({ status }) {
 
     return (
         <div className="login-page-container" style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#fff', color: '#111827', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-            <Head title="Log In - SIBAU" />
+            <Head title="Log In - BERITA UJIAN" />
 
             {/* Left Column: Branding */}
             <div className="login-left-brand" style={{
                 flex: 1.2,
-                background: 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%)',
+                background: 'linear-gradient(135deg, #153254 0%, #1c3e66 40%, #2b5886 75%, #38699a 100%)',
                 color: '#fff',
                 display: 'flex',
                 flexDirection: 'column',
@@ -38,7 +39,7 @@ export default function Login({ status }) {
 
                 <div style={{ zIndex: 2 }}>
                     <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '50px', height: '50px', background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)', borderRadius: '12px', fontSize: '20pt', fontWeight: 'bold', marginBottom: '20px', boxShadow: '0 4px 14px rgba(59, 130, 246, 0.4)' }}>S</div>
-                    <h1 style={{ fontSize: '32pt', fontWeight: '800', margin: 0, letterSpacing: '-1px' }}>SIBAU</h1>
+                    <h1 style={{ fontSize: '32pt', fontWeight: '800', margin: 0, letterSpacing: '-1px' }}>BERITA UJIAN</h1>
                     <p style={{ fontSize: '14pt', color: '#93c5fd', marginTop: '6px', fontWeight: '500' }}>Sistem Informasi Berita Acara Ujian</p>
                     <p style={{ fontSize: '11pt', color: '#60a5fa', marginTop: '2px' }}>Universitas Methodist Indonesia – Fakultas Ekonomi</p>
 
@@ -75,7 +76,7 @@ export default function Login({ status }) {
                 </div>
 
                 <div style={{ position: 'absolute', bottom: '30px', left: '60px', fontSize: '8.5pt', color: '#475569', zIndex: 2 }}>
-                    © {new Date().getFullYear()} SIBAU – Universitas Methodist Indonesia
+                    © {new Date().getFullYear()} BERITA UJIAN – Universitas Methodist Indonesia
                 </div>
             </div>
 
@@ -90,7 +91,7 @@ export default function Login({ status }) {
             }}>
                 <div style={{ maxWidth: '400px', width: '100%', margin: '0 auto' }}>
                     <h2 style={{ fontSize: '22pt', fontWeight: '800', margin: 0, letterSpacing: '-0.5px' }}>Selamat Datang 👋</h2>
-                    <p style={{ color: '#4b5563', marginTop: '6px', fontSize: '10pt', marginBottom: '32px' }}>Silakan masuk ke akun SIBAU Anda.</p>
+                    <p style={{ color: '#4b5563', marginTop: '6px', fontSize: '10pt', marginBottom: '32px' }}>Silakan masuk ke akun BERITA UJIAN Anda.</p>
 
                     {status && (
                         <div style={{ marginBottom: '16px', padding: '12px', borderRadius: '8px', backgroundColor: '#ecfdf5', color: '#059669', fontSize: '9.5pt', fontWeight: '500' }}>
@@ -100,14 +101,14 @@ export default function Login({ status }) {
 
                     <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                         <div>
-                            <label htmlFor="email" style={{ display: 'block', fontSize: '9.5pt', fontWeight: '600', marginBottom: '6px', color: '#374151' }}>NIP / Email</label>
+                            <label htmlFor="email" style={{ display: 'block', fontSize: '9.5pt', fontWeight: '600', marginBottom: '6px', color: '#374151' }}>NIDN / Email</label>
                             <input
                                 id="email"
-                                type="email"
+                                type="text"
                                 name="email"
                                 value={data.email}
                                 onChange={(e) => setData('email', e.target.value)}
-                                placeholder="Masukkan NIP atau Email"
+                                placeholder="Masukkan NIDN atau Email"
                                 style={{
                                     width: '100%',
                                     padding: '12px 14px',
@@ -126,26 +127,60 @@ export default function Login({ status }) {
 
                         <div>
                             <label htmlFor="password" style={{ display: 'block', fontSize: '9.5pt', fontWeight: '600', marginBottom: '6px', color: '#374151' }}>Kata Sandi</label>
-                            <input
-                                id="password"
-                                type="password"
-                                name="password"
-                                value={data.password}
-                                onChange={(e) => setData('password', e.target.value)}
-                                placeholder="Masukkan password"
-                                style={{
-                                    width: '100%',
-                                    padding: '12px 14px',
-                                    border: '1px solid #d1d5db',
-                                    borderRadius: '8px',
-                                    fontSize: '10pt',
-                                    boxSizing: 'border-box',
-                                    outline: 'none',
-                                    transition: 'border-color 0.2s'
-                                }}
-                                required
-                                autoComplete="current-password"
-                            />
+                            <div style={{ position: 'relative' }}>
+                                <input
+                                    id="password"
+                                    type={showPassword ? 'text' : 'password'}
+                                    name="password"
+                                    value={data.password}
+                                    onChange={(e) => setData('password', e.target.value)}
+                                    placeholder="Masukkan password"
+                                    style={{
+                                        width: '100%',
+                                        padding: '12px 40px 12px 14px',
+                                        border: '1px solid #d1d5db',
+                                        borderRadius: '8px',
+                                        fontSize: '10pt',
+                                        boxSizing: 'border-box',
+                                        outline: 'none',
+                                        transition: 'border-color 0.2s'
+                                    }}
+                                    required
+                                    autoComplete="current-password"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    style={{
+                                        position: 'absolute',
+                                        right: '12px',
+                                        top: '50%',
+                                        transform: 'translateY(-50%)',
+                                        background: 'none',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        color: '#6b7280',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        padding: '4px',
+                                        outline: 'none'
+                                    }}
+                                    title={showPassword ? "Sembunyikan password" : "Tampilkan password"}
+                                >
+                                    {showPassword ? (
+                                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                                            <line x1="1" y1="1" x2="23" y2="23" />
+                                        </svg>
+                                    ) : (
+                                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                            <circle cx="12" cy="12" r="3" />
+                                        </svg>
+                                    )}
+                                </button>
+                            </div>
                             <InputError message={errors.password} style={{ marginTop: '6px' }} />
                         </div>
 
@@ -155,7 +190,7 @@ export default function Login({ status }) {
                             style={{
                                 width: '100%',
                                 padding: '14px',
-                                background: 'linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%)',
+                                background: 'linear-gradient(135deg, #1e4b82 0%, #2b5886 100%)',
                                 border: 'none',
                                 borderRadius: '8px',
                                 color: '#fff',
@@ -163,40 +198,40 @@ export default function Login({ status }) {
                                 fontWeight: '700',
                                 cursor: 'pointer',
                                 transition: 'transform 0.2s, opacity 0.2s',
-                                boxShadow: '0 4px 12px rgba(29, 78, 216, 0.2)'
+                                boxShadow: '0 4px 12px rgba(30, 75, 130, 0.25)'
                             }}
                         >
-                            {processing ? 'Memproses...' : 'Masuk ke SIBAU'}
+                            {processing ? 'Memproses...' : 'Masuk ke BERITA UJIAN'}
                         </button>
-                    </form>
-
-                    {/* Demo Accounts Card */}
-                    <div style={{
-                        marginTop: '40px',
-                        padding: '18px',
-                        borderRadius: '10px',
-                        border: '1px dashed #cbd5e1',
-                        backgroundColor: '#f8fafc',
-                    }}>
-                        <h5 style={{ margin: 0, fontSize: '9.5pt', fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '10px' }}>Uji Coba Demo Login</h5>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '9pt', color: '#64748b' }}>
-                            <div>
-                                <strong style={{ color: '#334155' }}>Admin:</strong>
-                                <div style={{ fontFamily: 'monospace', background: '#e2e8f0', padding: '4px 6px', borderRadius: '4px', marginTop: '2px' }}>
-                                    Email: admin@umi.ac.id<br />
-                                    Pass: password
-                                </div>
-                            </div>
-                            {/* <div>
-                                <strong style={{ color: '#334155' }}>Dosen (Pengawas):</strong>
-                                <div style={{ fontFamily: 'monospace', background: '#e2e8f0', padding: '4px 6px', borderRadius: '4px', marginTop: '2px' }}>
-                                    Email: dosen@umi.ac.id<br />
-                                    Pass: password
-                                </div>
-                            </div> */}
+                        
+                        <div style={{ display: 'flex', alignItems: 'center', margin: '10px 0' }}>
+                            <div style={{ flex: 1, height: '1px', backgroundColor: '#e5e7eb' }}></div>
+                            <span style={{ padding: '0 10px', fontSize: '9pt', color: '#9ca3af', fontWeight: '500' }}>ATAU</span>
+                            <div style={{ flex: 1, height: '1px', backgroundColor: '#e5e7eb' }}></div>
                         </div>
-                    </div>
+
+                        <a
+                            href={route('mahasiswa.login')}
+                            style={{
+                                display: 'block',
+                                textAlign: 'center',
+                                width: '100%',
+                                padding: '12px',
+                                background: '#f0fdf4',
+                                border: '1px solid #bbf7d0',
+                                borderRadius: '8px',
+                                color: '#16a34a',
+                                fontSize: '10pt',
+                                fontWeight: '700',
+                                textDecoration: 'none',
+                                cursor: 'pointer',
+                                transition: 'background-color 0.2s, color 0.2s',
+                                boxSizing: 'border-box'
+                            }}
+                        >
+                            🎓 Portal Absensi Ujian Mahasiswa
+                        </a>
+                    </form>
                 </div>
             </div>
         </div>

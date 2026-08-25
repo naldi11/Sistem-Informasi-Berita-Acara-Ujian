@@ -20,7 +20,7 @@ export default function Dashboard({ stats, latestLogs, latestSchedules, activeTo
 
     return (
         <AuthenticatedLayout subtitle="Sistem Informasi Berita Acara Ujian">
-            <Head title="Dashboard - SIBAU Admin" />
+            <Head title="Dashboard - BERITA UJIAN Admin" />
 
             {/* Bab 3 Statistics Cards */}
             <div className="sibau-stats-grid">
@@ -121,13 +121,19 @@ export default function Dashboard({ stats, latestLogs, latestSchedules, activeTo
                                         <td>{schedule.ruang}</td>
                                         <td>{schedule.dosen.nama}</td>
                                         <td>
-                                            <span className={`sibau-badge ${
-                                                schedule.status === 'terjadwal' ? 'badge-info' : 
-                                                schedule.status === 'berlangsung' ? 'badge-warning' : 
-                                                schedule.status === 'selesai' ? 'badge-success' : 'badge-danger'
-                                            }`}>
-                                                {schedule.status}
-                                            </span>
+                                            {schedule.status === 'berlangsung' && schedule.berita_acara?.status_validasi === 'menunggu_validasi' ? (
+                                                <span className="sibau-badge badge-warning">
+                                                    MENUNGGU VALIDASI
+                                                </span>
+                                            ) : (
+                                                <span className={`sibau-badge ${
+                                                    schedule.status === 'terjadwal' ? 'badge-info' : 
+                                                    schedule.status === 'berlangsung' ? 'badge-warning' : 
+                                                    schedule.status === 'selesai' ? 'badge-success' : 'badge-danger'
+                                                }`} style={{ textTransform: 'uppercase' }}>
+                                                    {schedule.status}
+                                                </span>
+                                            )}
                                         </td>
                                     </tr>
                                 ))}

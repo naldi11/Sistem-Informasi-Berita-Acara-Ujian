@@ -21,18 +21,17 @@ class MataKuliah extends Model
         'kode_prodi',
         'semester',
         'status',
-        'teori',
-        'praktek',
-    ];
-
-    protected $casts = [
-        'teori' => 'boolean',
-        'praktek' => 'boolean',
+        'nip_dosen',
     ];
 
     public function programStudi()
     {
         return $this->belongsTo(ProgramStudi::class, 'kode_prodi', 'kode_prodi');
+    }
+
+    public function dosenPengampu()
+    {
+        return $this->belongsTo(Dosen::class, 'nip_dosen', 'nip');
     }
 
     public function jadwalUjians()

@@ -50,7 +50,7 @@ export default function Laporan({ baus, courses, dosens, filters }) {
 
     return (
         <AuthenticatedLayout subtitle="Laporan Rekapitulasi Berita Acara Ujian">
-            <Head title="Cetak Laporan - SIBAU" />
+            <Head title="Cetak Laporan - BERITA UJIAN" />
 
             <div className="sibau-laporan-layout">
                 {/* Left Side: Report Preview Table */}

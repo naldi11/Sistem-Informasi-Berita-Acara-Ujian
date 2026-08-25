@@ -92,6 +92,34 @@
             margin-bottom: 20px;
             min-height: 60px;
         }
+        .summary-box {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            border: 1px solid #000;
+        }
+        .summary-box th {
+            background-color: #f2f2f2;
+            border: 1px solid #000;
+            padding: 8px 12px;
+            font-size: 11pt;
+            font-weight: bold;
+            text-align: center;
+        }
+        .summary-box td {
+            border: 1px solid #000;
+            padding: 10px 12px;
+            font-size: 14pt;
+            font-weight: bold;
+            text-align: center;
+        }
+        .summary-label {
+            font-size: 9pt;
+            font-weight: normal;
+            color: #333;
+            display: block;
+            margin-top: 2px;
+        }
     </style>
 </head>
 <body>
@@ -115,9 +143,9 @@
             <td style="width: 80%;"><strong>{{ $bau->jadwalUjian->mataKuliah->nama_mk }} ({{ $bau->jadwalUjian->mataKuliah->sks }} SKS)</strong></td>
         </tr>
         <tr>
-            <td>Dosen Penguji</td>
+            <td>Pengampu</td>
             <td>:</td>
-            <td>{{ $bau->jadwalUjian->dosen->nama }}</td>
+            <td>{{ $bau->jadwalUjian->mataKuliah->dosenPengampu?->nama ?? '-' }}</td>
         </tr>
         <tr>
             <td>Kelas / Semester</td>
@@ -136,39 +164,30 @@
         {{ $bau->catatan ?: 'Ujian berlangsung tertib, aman, dan lancar.' }}
     </div>
 
-    <div style="font-weight: bold; margin-bottom: 5px;">Daftar Kehadiran dan Nilai Ujian:</div>
-    <table class="student-table">
+    <div style="font-weight: bold; margin-bottom: 8px;">Rekapitulasi Kehadiran Peserta Ujian:</div>
+    <table class="summary-box">
         <thead>
             <tr>
-                <th style="width: 5%;">No</th>
-                <th style="width: 20%;">NPM / NIM</th>
-                <th style="width: 45%;">Nama Mahasiswa</th>
-                <th style="width: 15%;">Kehadiran</th>
-                <th style="width: 15%;">Tanda Tangan</th>
+                <th>Total Terdaftar</th>
+                <th>Hadir</th>
+                <th>Tidak Hadir (Absen)</th>
             </tr>
         </thead>
         <tbody>
-            @foreach($bau->jadwalUjian->pesertaUjians as $idx => $peserta)
-                <tr>
-                    <td class="text-center">{{ $idx + 1 }}</td>
-                    <td class="text-center">{{ $peserta->nim }}</td>
-                    <td>{{ $peserta->mahasiswa->nama }}</td>
-                    <td class="text-center" style="text-transform: capitalize;">
-                        {{ $peserta->kehadiran == 'belum_ditentukan' ? 'Belum Diisi' : $peserta->kehadiran }}
-                    </td>
-                    <td class="text-center">
-                        @if($peserta->kehadiran == 'hadir')
-                            @if($peserta->tanda_tangan)
-                                <img src="{{ $peserta->tanda_tangan }}" class="signature-img" alt="TTD">
-                            @else
-                                <span style="font-size: 8pt; color: #666;">✓ Ada</span>
-                            @endif
-                        @else
-                            <span style="color: red;">✗ Absen</span>
-                        @endif
-                    </td>
-                </tr>
-            @endforeach
+            <tr>
+                <td>
+                    {{ $bau->jumlah_hadir + $bau->jumlah_absen }}
+                    <span class="summary-label">Mahasiswa</span>
+                </td>
+                <td style="color: #006400;">
+                    {{ $bau->jumlah_hadir }}
+                    <span class="summary-label">Mahasiswa</span>
+                </td>
+                <td style="color: #cc0000;">
+                    {{ $bau->jumlah_absen }}
+                    <span class="summary-label">Mahasiswa</span>
+                </td>
+            </tr>
         </tbody>
     </table>
 
@@ -178,19 +197,16 @@
 
     <table class="footer-sign">
         <tr>
-            <td>
-                Mengetahui,<br>
-                Kaprodi Ekonomi/Akuntansi
-                <br><br><br><br>
-                <u><strong>Junika Napitupulu, S.Si., M.Si.</strong></u><br>
-                Dekan / Ketua Program Studi
-            </td>
+            <td></td>
             <td>
                 Medan, {{ date('d') }} {{ $monthName }} {{ date('Y') }}<br>
-                Dosen Pengawas / Penguji
-                <br><br><br><br>
+                Pengawas Ujian,
+                <br>
+                <div style="margin: 8px 0;">
+                    <img src="{{ $qrCode }}" alt="QR Code Signature" style="width: 100px; height: 100px; display: inline-block;">
+                </div>
                 <u><strong>{{ $bau->jadwalUjian->dosen->nama }}</strong></u><br>
-                NIP: {{ $bau->jadwalUjian->dosen->nip }}
+                NIDN: {{ $bau->jadwalUjian->dosen->nip }}
             </td>
         </tr>
     </table>

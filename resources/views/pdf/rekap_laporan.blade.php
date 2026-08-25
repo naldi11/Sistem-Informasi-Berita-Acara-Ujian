@@ -91,7 +91,7 @@
                 <th style="width: 5%;">No</th>
                 <th style="width: 12%;">Kode MK</th>
                 <th style="width: 25%;">Mata Kuliah</th>
-                <th style="width: 23%;">Dosen Penguji</th>
+                <th style="width: 23%;">Pengawas</th>
                 <th style="width: 12%;">Tanggal</th>
                 <th style="width: 8%;">Kelas</th>
                 <th style="width: 5%;">Hadir</th>
@@ -130,7 +130,7 @@
                 Dekan Fakultas Ekonomi
                 <br><br><br><br>
                 <u><strong>Dr. Jeudi A.T.P. Sianturi, S.E., M.Si.</strong></u><br>
-                NIP. 19770312001
+                NIDN. 19770312001
             </td>
         </tr>
     </table>

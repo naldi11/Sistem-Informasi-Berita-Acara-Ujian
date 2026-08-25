@@ -11,7 +11,7 @@ export default function Laporan({ baus }) {
 
     return (
         <AuthenticatedLayout subtitle="Arsip Berita Acara Ujian (BAU) Tervalidasi">
-            <Head title="Laporan Selesai - SIBAU" />
+            <Head title="Laporan Selesai - BERITA UJIAN" />
 
             {/* Filter */}
             <div className="sibau-card" style={{ padding: '20px', marginBottom: '24px' }}>

@@ -20,13 +20,9 @@ class Dosen extends Model
         'kode_prodi',
         'jabatan',
         'status',
-        'ampu_mata_kuliah',
-        'ampu_kelas',
     ];
 
     protected $casts = [
-        'ampu_mata_kuliah' => 'array',
-        'ampu_kelas' => 'array',
     ];
 
     public function programStudi()

@@ -27,7 +27,7 @@ export default function Users({ dosens, mahasiswas, prodis, courses = [] }) {
     const dosenForm = useForm({
         nip: '',
         nama: '',
-        kode_prodi: prodis[0]?.kode_prodi || '',
+        kode_prodi: null,
         jabatan: 'Lektor',
         email: '',
         password: '',
@@ -44,6 +44,8 @@ export default function Users({ dosens, mahasiswas, prodis, courses = [] }) {
         angkatan: new Date().getFullYear().toString(),
         kelas: '',
         status: 'aktif',
+        email: '',
+        password: '',
     });
 
     const openAddDosen = () => {
@@ -86,6 +88,8 @@ export default function Users({ dosens, mahasiswas, prodis, courses = [] }) {
             angkatan: mhs.angkatan,
             kelas: mhs.kelas || '',
             status: mhs.status,
+            email: mhs.email || '',
+            password: '',
         });
         mahasiswaForm.clearErrors();
         setMahasiswaModalOpen(true);
@@ -138,7 +142,7 @@ export default function Users({ dosens, mahasiswas, prodis, courses = [] }) {
     };
 
     const deleteDosen = (nip) => {
-        if (confirm('Apakah Anda yakin ingin menghapus dosen ini? User account terkait juga akan terhapus.')) {
+        if (confirm('Apakah Anda yakin ingin menghapus pengawas ini? User account terkait juga akan terhapus.')) {
             dosenForm.delete(route('admin.users.deleteDosen', { nip: nip }));
         }
     };
@@ -164,14 +168,14 @@ export default function Users({ dosens, mahasiswas, prodis, courses = [] }) {
     const classOptions = Array.from(new Set(allProdiClasses)).filter(Boolean).sort();
 
     return (
-        <AuthenticatedLayout subtitle="Manajemen Dosen & Mahasiswa">
-            <Head title="Kelola Dosen & Mahasiswa - SIBAU" />
+        <AuthenticatedLayout subtitle="Manajemen Pengawas & Mahasiswa">
+            <Head title="Kelola Pengawas & Mahasiswa - BERITA UJIAN" />
             <div className="sibau-tabs-container">
                 <button 
                     onClick={() => setActiveTab('dosen')}
                     className={`sibau-tab-btn ${activeTab === 'dosen' ? 'active' : ''}`}
                 >
-                    👨‍🏫 Dosen
+                    👨‍🏫 Pengawas
                 </button>
                 <button 
                     onClick={() => setActiveTab('mahasiswa')}
@@ -184,10 +188,10 @@ export default function Users({ dosens, mahasiswas, prodis, courses = [] }) {
             {activeTab === 'dosen' && (
                 <div className="sibau-card" style={{ padding: '20px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                        <h3 style={{ margin: 0, fontSize: '11pt', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px' }}>👨‍🏫 Manajemen Dosen</h3>
+                        <h3 style={{ margin: 0, fontSize: '11pt', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px' }}>👨‍🏫 Manajemen Pengawas</h3>
                         <div style={{ display: 'flex', gap: '8px' }}>
-                            <button onClick={() => setImportDosenOpen(true)} className="sibau-btn sibau-btn-secondary sibau-btn-sm">📁 Import Dosen</button>
-                            <button onClick={openAddDosen} className="sibau-btn sibau-btn-primary sibau-btn-sm">+ Tambah Dosen</button>
+                            <button onClick={() => setImportDosenOpen(true)} className="sibau-btn sibau-btn-secondary sibau-btn-sm">📁 Import Pengawas</button>
+                            <button onClick={openAddDosen} className="sibau-btn sibau-btn-primary sibau-btn-sm">+ Tambah Pengawas</button>
                         </div>
                     </div>
 
@@ -195,7 +199,7 @@ export default function Users({ dosens, mahasiswas, prodis, courses = [] }) {
                         <input 
                             type="text" 
                             className="sibau-input" 
-                            placeholder="Cari Dosen (NIP / Nama)..." 
+                            placeholder="Cari Pengawas (NIDN / Nama)..." 
                             value={dosenSearch}
                             onChange={(e) => setDosenSearch(e.target.value)}
                         />
@@ -205,47 +209,20 @@ export default function Users({ dosens, mahasiswas, prodis, courses = [] }) {
                         <table className="sibau-table">
                             <thead>
                                 <tr>
-                                    <th>NIP</th>
-                                    <th>Nama Dosen</th>
+                                    <th>NIDN</th>
+                                    <th>Nama Pengawas</th>
                                     <th>Jabatan</th>
-                                    <th>Prodi</th>
-                                    <th>Mata Kuliah Diampu</th>
-                                    <th>Kelas</th>
                                     <th>Status</th>
                                     <th style={{ width: '80px' }}>Aksi</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {filteredDosens.map((d) => {
-                                    const ampuMK = Array.isArray(d.ampu_mata_kuliah) ? d.ampu_mata_kuliah : [];
-                                    const ampuKelas = Array.isArray(d.ampu_kelas) ? d.ampu_kelas : [];
                                     return (
                                         <tr key={d.nip}>
                                             <td style={{ fontFamily: 'monospace' }}>{d.nip}</td>
                                             <td style={{ fontWeight: '600' }}>{d.nama}</td>
                                             <td>{d.jabatan || 'Lektor'}</td>
-                                            <td>{d.program_studi?.nama_prodi || d.kode_prodi}</td>
-                                            <td>
-                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', maxWidth: '180px' }}>
-                                                    {ampuMK.length > 0 ? ampuMK.map(mk => {
-                                                        const c = courses.find(item => item.kode_mk === mk);
-                                                        return (
-                                                            <span key={mk} className="sibau-badge badge-info" style={{ fontSize: '7.5pt', padding: '1px 4px' }} title={c ? c.nama_mk : mk}>
-                                                                {mk}
-                                                            </span>
-                                                        );
-                                                    }) : <span style={{ fontSize: '8.5pt', color: 'var(--text-muted)' }}>-</span>}
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                                                    {ampuKelas.length > 0 ? ampuKelas.map(k => (
-                                                        <span key={k} className="sibau-badge badge-warning" style={{ fontSize: '7.5pt', padding: '1px 4px' }}>
-                                                            {k}
-                                                        </span>
-                                                    )) : <span style={{ fontSize: '8.5pt', color: 'var(--text-muted)' }}>-</span>}
-                                                </div>
-                                            </td>
                                             <td>
                                                 <span className={`sibau-badge ${d.status === 'aktif' ? 'badge-success' : 'badge-danger'}`}>
                                                     {d.status}
@@ -303,7 +280,10 @@ export default function Users({ dosens, mahasiswas, prodis, courses = [] }) {
                                 {filteredMahasiswas.map((m) => (
                                     <tr key={m.nim}>
                                         <td style={{ fontFamily: 'monospace' }}>{m.nim}</td>
-                                        <td style={{ fontWeight: '600' }}>{m.nama}</td>
+                                        <td style={{ fontWeight: '600' }}>
+                                            <div>{m.nama}</div>
+                                            <div style={{ fontSize: '8.5pt', color: 'var(--text-muted)', fontWeight: 'normal' }}>{m.email || '-'}</div>
+                                        </td>
                                         <td>{m.program_studi?.nama_prodi || m.kode_prodi}</td>
                                         <td className="text-center">{m.angkatan}</td>
                                         <td className="text-center" style={{ fontWeight: '700' }}>{m.kelas || '-'}</td>
@@ -331,13 +311,13 @@ export default function Users({ dosens, mahasiswas, prodis, courses = [] }) {
                 <div className="sibau-modal-overlay">
                     <div className="sibau-modal">
                         <div className="sibau-modal-header">
-                            <h3 className="sibau-modal-title">{editingDosen ? 'Edit Data Dosen' : 'Tambah Dosen Baru'}</h3>
+                            <h3 className="sibau-modal-title">{editingDosen ? 'Edit Data Pengawas' : 'Tambah Pengawas Baru'}</h3>
                             <button onClick={() => setDosenModalOpen(false)} className="sibau-modal-close">×</button>
                         </div>
                         <form onSubmit={submitDosen}>
                             <div className="sibau-modal-body">
                                 <div className="sibau-form-group">
-                                    <label className="sibau-label">NIP</label>
+                                    <label className="sibau-label">NIDN</label>
                                     <input 
                                         type="text" 
                                         className="sibau-input" 
@@ -360,20 +340,6 @@ export default function Users({ dosens, mahasiswas, prodis, courses = [] }) {
                                     {dosenForm.errors.nama && <div style={{ color: 'red', fontSize: '9pt', marginTop: '4px' }}>{dosenForm.errors.nama}</div>}
                                 </div>
                                 <div className="sibau-form-group">
-                                    <label className="sibau-label">Program Studi</label>
-                                    <SearchableSelect 
-                                        options={prodis.map(p => ({ value: p.kode_prodi, label: p.nama_prodi }))}
-                                        value={dosenForm.data.kode_prodi} 
-                                        onChange={e => {
-                                            dosenForm.setData(data => ({
-                                                ...data,
-                                                kode_prodi: e.target.value,
-                                                ampu_kelas: []
-                                            }));
-                                        }}
-                                    />
-                                </div>
-                                <div className="sibau-form-group">
                                     <label className="sibau-label">Jabatan Akademik</label>
                                     <input 
                                         type="text" 
@@ -383,58 +349,29 @@ export default function Users({ dosens, mahasiswas, prodis, courses = [] }) {
                                     />
                                 </div>
                                 <div className="sibau-form-group">
-                                    <label className="sibau-label">Mata Kuliah yang Diampu (Multi-select)</label>
-                                    <SearchableSelect 
-                                        options={courses.map(c => ({ value: c.kode_mk, label: `${c.nama_mk} (${c.kode_mk})` }))}
-                                        value={dosenForm.data.ampu_mata_kuliah} 
-                                        onChange={e => dosenForm.setData('ampu_mata_kuliah', e.target.value)}
-                                        multiple={true}
-                                        placeholder="Pilih mata kuliah..."
+                                    <label className="sibau-label">Email Akun</label>
+                                    <input 
+                                        type="email" 
+                                        className="sibau-input" 
+                                        value={dosenForm.data.email} 
+                                        onChange={e => dosenForm.setData('email', e.target.value)} 
+                                        required 
                                     />
-                                    {dosenForm.errors.ampu_mata_kuliah && <div style={{ color: 'red', fontSize: '9pt', marginTop: '4px' }}>{dosenForm.errors.ampu_mata_kuliah}</div>}
+                                    {dosenForm.errors.email && <div style={{ color: 'red', fontSize: '9pt', marginTop: '4px' }}>{dosenForm.errors.email}</div>}
                                 </div>
                                 <div className="sibau-form-group">
-                                    <label className="sibau-label">Kelas yang Diampu (Multi-select)</label>
-                                    <SearchableSelect 
-                                        options={
-                                            (() => {
-                                                const p = prodis.find(item => item.kode_prodi === dosenForm.data.kode_prodi);
-                                                const kls = p?.daftar_kelas || [];
-                                                return kls.map(k => ({ value: k, label: `Kelas ${k}` }));
-                                            })()
-                                        }
-                                        value={dosenForm.data.ampu_kelas} 
-                                        onChange={e => dosenForm.setData('ampu_kelas', e.target.value)}
-                                        multiple={true}
-                                        placeholder="Pilih kelas..."
+                                    <label className="sibau-label">
+                                        {editingDosen ? 'Kata Sandi Baru (Kosongkan jika tidak diubah)' : 'Kata Sandi'}
+                                    </label>
+                                    <input 
+                                        type="password" 
+                                        className="sibau-input" 
+                                        value={dosenForm.data.password} 
+                                        onChange={e => dosenForm.setData('password', e.target.value)} 
+                                        required={!editingDosen} 
                                     />
-                                    {dosenForm.errors.ampu_kelas && <div style={{ color: 'red', fontSize: '9pt', marginTop: '4px' }}>{dosenForm.errors.ampu_kelas}</div>}
+                                    {dosenForm.errors.password && <div style={{ color: 'red', fontSize: '9pt', marginTop: '4px' }}>{dosenForm.errors.password}</div>}
                                 </div>
-                                {!editingDosen && (
-                                    <>
-                                        <div className="sibau-form-group">
-                                            <label className="sibau-label">Email Akun</label>
-                                            <input 
-                                                type="email" 
-                                                className="sibau-input" 
-                                                value={dosenForm.data.email} 
-                                                onChange={e => dosenForm.setData('email', e.target.value)} 
-                                                required 
-                                            />
-                                            {dosenForm.errors.email && <div style={{ color: 'red', fontSize: '9pt', marginTop: '4px' }}>{dosenForm.errors.email}</div>}
-                                        </div>
-                                        <div className="sibau-form-group">
-                                            <label className="sibau-label">Kata Sandi</label>
-                                            <input 
-                                                type="password" 
-                                                className="sibau-input" 
-                                                value={dosenForm.data.password} 
-                                                onChange={e => dosenForm.setData('password', e.target.value)} 
-                                                required 
-                                            />
-                                        </div>
-                                    </>
-                                )}
                                 {editingDosen && (
                                     <div className="sibau-form-group">
                                         <label className="sibau-label">Status Keaktifan</label>
@@ -452,7 +389,7 @@ export default function Users({ dosens, mahasiswas, prodis, courses = [] }) {
                             <div className="sibau-modal-footer">
                                 <button type="button" onClick={() => setDosenModalOpen(false)} className="sibau-btn sibau-btn-secondary">Batal</button>
                                 <button type="submit" disabled={dosenForm.processing} className="sibau-btn sibau-btn-primary">
-                                    {editingDosen ? 'Simpan Perubahan' : 'Tambah Dosen'}
+                                    {editingDosen ? 'Simpan Perubahan' : 'Tambah Pengawas'}
                                 </button>
                             </div>
                         </form>
@@ -533,6 +470,30 @@ export default function Users({ dosens, mahasiswas, prodis, courses = [] }) {
                                     />
                                     {mahasiswaForm.errors.kelas && <div style={{ color: 'red', fontSize: '9pt', marginTop: '4px' }}>{mahasiswaForm.errors.kelas}</div>}
                                 </div>
+                                <div className="sibau-form-group">
+                                    <label className="sibau-label">Email</label>
+                                    <input 
+                                        type="email" 
+                                        className="sibau-input" 
+                                        value={mahasiswaForm.data.email} 
+                                        onChange={e => mahasiswaForm.setData('email', e.target.value)} 
+                                        required 
+                                    />
+                                    {mahasiswaForm.errors.email && <div style={{ color: 'red', fontSize: '9pt', marginTop: '4px' }}>{mahasiswaForm.errors.email}</div>}
+                                </div>
+                                <div className="sibau-form-group">
+                                    <label className="sibau-label">
+                                        {editingMahasiswa ? 'Kata Sandi Baru (Kosongkan jika tidak diubah)' : 'Kata Sandi'}
+                                    </label>
+                                    <input 
+                                        type="password" 
+                                        className="sibau-input" 
+                                        value={mahasiswaForm.data.password} 
+                                        onChange={e => mahasiswaForm.setData('password', e.target.value)} 
+                                        required={!editingMahasiswa} 
+                                    />
+                                    {mahasiswaForm.errors.password && <div style={{ color: 'red', fontSize: '9pt', marginTop: '4px' }}>{mahasiswaForm.errors.password}</div>}
+                                </div>
                                 {editingMahasiswa && (
                                     <div className="sibau-form-group">
                                         <label className="sibau-label">Status</label>
@@ -563,7 +524,7 @@ export default function Users({ dosens, mahasiswas, prodis, courses = [] }) {
                 <div className="sibau-modal-overlay">
                     <div className="sibau-modal">
                         <div className="sibau-modal-header">
-                            <h3 className="sibau-modal-title">Import Dosen dari Excel</h3>
+                            <h3 className="sibau-modal-title">Import Pengawas dari Excel</h3>
                             <button onClick={() => setImportDosenOpen(false)} className="sibau-modal-close">×</button>
                         </div>
                         <form onSubmit={submitImportDosen}>
@@ -579,15 +540,15 @@ export default function Users({ dosens, mahasiswas, prodis, courses = [] }) {
                                     {importDosenForm.errors.excel_file && <div style={{ color: 'red', fontSize: '9pt', marginTop: '4px' }}>{importDosenForm.errors.excel_file}</div>}
                                     <div style={{ marginTop: '8px' }}>
                                         <a href={route('admin.templates.download', { type: 'dosen' })} style={{ fontSize: '9pt', color: 'var(--color-primary)', textDecoration: 'underline', fontWeight: '600' }}>
-                                            📥 Unduh Template Excel Dosen
+                                            📥 Unduh Template Excel Pengawas
                                         </a>
                                     </div>
                                 </div>
                                 <div style={{ fontSize: '8.5pt', color: 'var(--text-muted)', border: '1px solid var(--border-color)', padding: '10px', borderRadius: '8px', background: '#f8fafc' }}>
                                     💡 <strong>Info Format Kolom Excel:</strong><br />
                                     Data harus berada pada Sheet pertama dengan format kolom:<br />
-                                    <strong>A: NIP, B: Nama Dosen, C: Kode Prodi (e.g. AKT, MNJ), D: Jabatan Akademik, E: Email (Opsional), F: Mata Kuliah Diampu (Kode MK, pisah koma), G: Kelas Diampu (pisah koma)</strong><br />
-                                    <span style={{ fontSize: '8pt', color: '#64748b' }}>* Baris pertama diasumsikan sebagai Header (dilewati saat impor). Akun user dosen akan otomatis dibuat dengan password default <code>password123</code>.</span>
+                                     <strong>A: NIDN, B: Nama Pengawas, C: Jabatan Akademik, D: Email (Opsional)</strong><br />
+                                     <span style={{ fontSize: '8pt', color: '#64748b' }}>* Baris pertama diasumsikan sebagai Header (dilewati saat impor). Akun user pengawas akan otomatis dibuat dengan password default <code>password</code>.</span>
                                 </div>
                             </div>
                             <div className="sibau-modal-footer">

@@ -95,7 +95,7 @@ export default function Index({ prodis }) {
 
     return (
         <AuthenticatedLayout subtitle="Kelola Program Studi Fakultas Ekonomi">
-            <Head title="Manajemen Program Studi - SIBAU" />
+            <Head title="Manajemen Program Studi - BERITA UJIAN" />
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '24px' }}>
                 <button onClick={openAdd} className="sibau-btn sibau-btn-primary">+ Tambah Prodi</button>

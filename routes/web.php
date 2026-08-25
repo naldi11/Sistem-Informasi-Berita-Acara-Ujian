@@ -57,7 +57,7 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
     Route::delete('/matakuliah/{kode_mk}', [AdminController::class, 'deleteMataKuliah'])->name('admin.matakuliah.delete');
     Route::post('/matakuliah/import', [AdminController::class, 'importMataKuliah'])->name('admin.matakuliah.import');
 
-    // Jadwal Ujian CRUD & Excel Import
+    // Jadwal Ujian CRUD
     Route::get('/jadwal', [AdminController::class, 'jadwalIndex'])->name('admin.jadwal');
     Route::post('/jadwal', [AdminController::class, 'storeJadwal'])->name('admin.jadwal.store');
     Route::put('/jadwal/{id}', [AdminController::class, 'updateJadwal'])->name('admin.jadwal.update');
@@ -67,7 +67,14 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
     // Berita Acara Ujian list & validation
     Route::get('/berita-acara', [AdminController::class, 'beritaAcaraIndex'])->name('admin.berita-acara');
     Route::post('/berita-acara/{id}/validate', [AdminController::class, 'validateBeritaAcara'])->name('admin.berita-acara.validate');
+    Route::post('/berita-acara/{id}/ganti-pengawas', [AdminController::class, 'gantiPengawasBeritaAcara'])->name('admin.berita-acara.ganti-pengawas');
     Route::get('/berita-acara/{id}/pdf', [AdminController::class, 'printBeritaAcaraPdf'])->name('admin.berita-acara.pdf');
+
+    // Permohonan Penggantian Pengawas
+    Route::get('/permohonan-penggantian', [AdminController::class, 'permohonanPenggantianIndex'])->name('admin.permohonan-penggantian');
+    Route::post('/permohonan-penggantian/{id}/approve', [AdminController::class, 'approvePermohonanPenggantian'])->name('admin.permohonan-penggantian.approve');
+    Route::post('/permohonan-penggantian/{id}/reject', [AdminController::class, 'rejectPermohonanPenggantian'])->name('admin.permohonan-penggantian.reject');
+    Route::get('/permohonan-penggantian/{id}/surat', [AdminController::class, 'cetakSuratPermohonan'])->name('admin.permohonan-penggantian.surat');
 
     // Laporan Rekapitulasi & PDF Download
     Route::get('/laporan', [AdminController::class, 'laporanIndex'])->name('admin.laporan');
@@ -79,12 +86,22 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
     Route::post('/pengaturan/profile', [AdminController::class, 'updateProfile'])->name('admin.pengaturan.profile');
     Route::post('/pengaturan/staff', [AdminController::class, 'addStaff'])->name('admin.pengaturan.staff');
     Route::delete('/pengaturan/staff/{id}', [AdminController::class, 'deleteStaff'])->name('admin.pengaturan.staff.delete');
+    Route::post('/pengaturan/keamanan', [AdminController::class, 'updateSecuritySettings'])->name('admin.pengaturan.keamanan');
+
+    // Panduan System
+    Route::get('/panduan', [AdminController::class, 'panduanIndex'])->name('admin.panduan');
 });
 
 // Dosen Routes
 Route::middleware(['auth', 'role:dosen'])->prefix('dosen')->group(function () {
     Route::get('/dashboard', [DosenController::class, 'dashboard'])->name('dosen.dashboard');
     Route::get('/jadwal', [DosenController::class, 'jadwalIndex'])->name('dosen.jadwal');
+    Route::get('/delegasi', [DosenController::class, 'delegasiIndex'])->name('dosen.delegasi');
+    Route::post('/jadwal/{id}/delegasi', [DosenController::class, 'delegasiJadwal'])->name('dosen.jadwal.delegasi');
+    
+    // Permohonan Penggantian
+    Route::get('/permohonan-penggantian', [DosenController::class, 'permohonanPenggantianIndex'])->name('dosen.permohonan-penggantian');
+    Route::post('/permohonan-penggantian', [DosenController::class, 'storePermohonanPenggantian'])->name('dosen.permohonan-penggantian.store');
     
     // Berita Acara Dosen
     Route::get('/berita-acara', [DosenController::class, 'beritaAcaraIndex'])->name('dosen.berita-acara');
@@ -94,6 +111,20 @@ Route::middleware(['auth', 'role:dosen'])->prefix('dosen')->group(function () {
     
     // Laporan Dosen
     Route::get('/laporan', [DosenController::class, 'laporanIndex'])->name('dosen.laporan');
+    
+    // Panduan System Dosen
+    Route::get('/panduan', [DosenController::class, 'panduanIndex'])->name('dosen.panduan');
 });
 
 require __DIR__.'/auth.php';
+
+// Student Attendance Portal
+Route::prefix('mahasiswa')->group(function () {
+    Route::get('/login', [\App\Http\Controllers\MahasiswaAttendanceController::class, 'showLogin'])->name('mahasiswa.login');
+    Route::post('/login', [\App\Http\Controllers\MahasiswaAttendanceController::class, 'login'])->name('mahasiswa.login.submit');
+    Route::post('/logout', [\App\Http\Controllers\MahasiswaAttendanceController::class, 'logout'])->name('mahasiswa.logout');
+
+    Route::get('/dashboard', [\App\Http\Controllers\MahasiswaAttendanceController::class, 'dashboard'])->name('mahasiswa.dashboard');
+    Route::get('/absen/{jadwal_id}', [\App\Http\Controllers\MahasiswaAttendanceController::class, 'absenForm'])->name('mahasiswa.absen.form');
+    Route::post('/absen/submit', [\App\Http\Controllers\MahasiswaAttendanceController::class, 'submitAttendance'])->name('mahasiswa.absen.submit');
+});

@@ -16,6 +16,7 @@ use App\Models\JadwalUjian;
 use App\Models\PesertaUjian;
 use App\Models\BeritaAcara;
 use App\Models\ActivityLog;
+use App\Models\PermohonanGantiPengawas;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -42,7 +43,7 @@ class AdminController extends Controller
 
         $latestLogs = ActivityLog::with('user')->orderBy('created_at', 'desc')->limit(6)->get();
 
-        $latestSchedules = JadwalUjian::with(['mataKuliah', 'dosen'])
+        $latestSchedules = JadwalUjian::with(['mataKuliah', 'dosen', 'beritaAcara'])
             ->orderBy('tanggal', 'desc')
             ->orderBy('jam_mulai', 'desc')
             ->limit(5)
@@ -78,7 +79,7 @@ class AdminController extends Controller
     // --- CRUD Dosen & Mahasiswa ---
     public function usersIndex()
     {
-        $dosens = Dosen::with('programStudi')->get();
+        $dosens = Dosen::with(['programStudi', 'user'])->get();
         $mahasiswas = Mahasiswa::with('programStudi')->get();
         $prodis = ProgramStudi::where('status', 'aktif')->get();
         $courses = MataKuliah::where('status', 'aktif')->get();
@@ -96,18 +97,14 @@ class AdminController extends Controller
         $request->validate([
             'nip' => 'required|string|unique:dosens,nip',
             'nama' => 'required|string',
-            'kode_prodi' => 'required|string|exists:program_studis,kode_prodi',
-            'jabatan' => 'nullable|string',
             'email' => 'required|email|unique:users,email',
             'password' => 'required|string|min:6',
-            'ampu_mata_kuliah' => 'nullable|array',
-            'ampu_mata_kuliah.*' => 'string|exists:mata_kuliahs,kode_mk',
-            'ampu_kelas' => 'nullable|array',
-            'ampu_kelas.*' => 'string',
+            'kode_prodi' => 'nullable|string|exists:program_studis,kode_prodi',
+            'jabatan' => 'nullable|string',
         ]);
 
         DB::transaction(function () use ($request) {
-            Dosen::create($request->only('nip', 'nama', 'kode_prodi', 'jabatan', 'ampu_mata_kuliah', 'ampu_kelas') + ['status' => 'aktif']);
+            Dosen::create($request->only('nip', 'nama', 'kode_prodi', 'jabatan') + ['status' => 'aktif']);
             User::create([
                 'name' => $request->nama,
                 'email' => $request->email,
@@ -118,40 +115,44 @@ class AdminController extends Controller
             ]);
         });
 
-        $this->log("Menambahkan dosen baru: {$request->nama} ({$request->nip})");
-        return redirect()->back()->with('success', 'Dosen berhasil ditambahkan.');
+        $this->log("Menambahkan pengawas baru: {$request->nama} ({$request->nip})");
+        return redirect()->back()->with('success', 'Pengawas berhasil ditambahkan.');
     }
 
     public function updateDosen(Request $request, $nip)
     {
         $dosen = Dosen::findOrFail($nip);
+        $user = User::where('nip', $dosen->nip)->first();
+        $userId = $user ? $user->id : null;
         
         $request->validate([
             'nama' => 'required|string',
-            'kode_prodi' => 'required|string|exists:program_studis,kode_prodi',
+            'email' => 'required|email|unique:users,email,' . $userId,
+            'password' => 'nullable|string|min:6',
+            'kode_prodi' => 'nullable|string|exists:program_studis,kode_prodi',
             'jabatan' => 'nullable|string',
             'status' => 'required|in:aktif,nonaktif',
-            'ampu_mata_kuliah' => 'nullable|array',
-            'ampu_mata_kuliah.*' => 'string|exists:mata_kuliahs,kode_mk',
-            'ampu_kelas' => 'nullable|array',
-            'ampu_kelas.*' => 'string',
         ]);
 
-        DB::transaction(function () use ($request, $dosen) {
-            $dosen->update($request->only('nama', 'kode_prodi', 'jabatan', 'status', 'ampu_mata_kuliah', 'ampu_kelas'));
+        DB::transaction(function () use ($request, $dosen, $user) {
+            $dosen->update($request->only('nama', 'kode_prodi', 'jabatan', 'status'));
             
             // Sync user details
-            $user = User::where('nip', $dosen->nip)->first();
             if ($user) {
-                $user->update([
+                $userData = [
                     'name' => $request->nama,
+                    'email' => $request->email,
                     'status' => $request->status,
-                ]);
+                ];
+                if (!empty($request->password)) {
+                    $userData['password'] = Hash::make($request->password);
+                }
+                $user->update($userData);
             }
         });
 
-        $this->log("Mengubah data dosen: {$request->nama} ({$nip})");
-        return redirect()->back()->with('success', 'Data dosen berhasil diubah.');
+        $this->log("Mengubah data pengawas: {$request->nama} ({$nip})");
+        return redirect()->back()->with('success', 'Data pengawas berhasil diubah.');
     }
 
     public function deleteDosen($nip)
@@ -159,13 +160,17 @@ class AdminController extends Controller
         $dosen = Dosen::findOrFail($nip);
         $name = $dosen->nama;
 
+        if (JadwalUjian::where('nip_dosen', $nip)->exists()) {
+            return redirect()->back()->with('error', 'Gagal menghapus: Pengawas ini memiliki jadwal pengawasan ujian yang aktif.');
+        }
+
         DB::transaction(function () use ($dosen) {
             User::where('nip', $dosen->nip)->delete();
             $dosen->delete();
         });
 
-        $this->log("Menghapus dosen: {$name} ({$nip})");
-        return redirect()->back()->with('success', 'Dosen berhasil dihapus.');
+        $this->log("Menghapus pengawas: {$name} ({$nip})");
+        return redirect()->back()->with('success', 'Pengawas berhasil dihapus.');
     }
 
     public function storeMahasiswa(Request $request)
@@ -176,9 +181,14 @@ class AdminController extends Controller
             'kode_prodi' => 'required|string|exists:program_studis,kode_prodi',
             'angkatan' => 'required|string',
             'kelas' => 'required|string',
+            'email' => 'required|email|unique:mahasiswas,email',
+            'password' => 'required|string|min:6',
         ]);
 
-        Mahasiswa::create($request->only('nim', 'nama', 'kode_prodi', 'angkatan', 'kelas') + ['status' => 'aktif']);
+        Mahasiswa::create($request->only('nim', 'nama', 'kode_prodi', 'angkatan', 'kelas', 'email') + [
+            'password' => Hash::make($request->password),
+            'status' => 'aktif'
+        ]);
 
         $this->log("Menambahkan mahasiswa baru: {$request->nama} ({$request->nim})");
         return redirect()->back()->with('success', 'Mahasiswa berhasil ditambahkan.');
@@ -194,9 +204,16 @@ class AdminController extends Controller
             'angkatan' => 'required|string',
             'kelas' => 'required|string',
             'status' => 'required|in:aktif,cuti,nonaktif',
+            'email' => 'required|email|unique:mahasiswas,email,' . $nim . ',nim',
+            'password' => 'nullable|string|min:6',
         ]);
 
-        $mahasiswa->update($request->only('nama', 'kode_prodi', 'angkatan', 'kelas', 'status'));
+        $updateData = $request->only('nama', 'kode_prodi', 'angkatan', 'kelas', 'status', 'email');
+        if ($request->filled('password')) {
+            $updateData['password'] = Hash::make($request->password);
+        }
+
+        $mahasiswa->update($updateData);
 
         $this->log("Mengubah data mahasiswa: {$request->nama} ({$nim})");
         return redirect()->back()->with('success', 'Data mahasiswa berhasil diubah.');
@@ -206,6 +223,11 @@ class AdminController extends Controller
     {
         $mahasiswa = Mahasiswa::findOrFail($nim);
         $name = $mahasiswa->nama;
+
+        if (PesertaUjian::where('nim', $nim)->exists()) {
+            return redirect()->back()->with('error', 'Gagal menghapus: Mahasiswa ini sudah terdaftar sebagai peserta ujian.');
+        }
+
         $mahasiswa->delete();
 
         $this->log("Menghapus mahasiswa: {$name} ({$nim})");
@@ -267,6 +289,11 @@ class AdminController extends Controller
     {
         $prodi = ProgramStudi::findOrFail($kode_prodi);
         $name = $prodi->nama_prodi;
+
+        if (Mahasiswa::where('kode_prodi', $kode_prodi)->exists() || Dosen::where('kode_prodi', $kode_prodi)->exists() || MataKuliah::where('kode_prodi', $kode_prodi)->exists()) {
+            return redirect()->back()->with('error', 'Gagal menghapus: Program studi ini memiliki dosen, mahasiswa, atau mata kuliah terdaftar.');
+        }
+
         $prodi->delete();
 
         $this->log("Menghapus program studi: {$name} ({$kode_prodi})");
@@ -292,12 +319,14 @@ class AdminController extends Controller
     // --- CRUD Mata Kuliah ---
     public function mataKuliahIndex()
     {
-        $courses = MataKuliah::with('programStudi')->get();
+        $courses = MataKuliah::with(['programStudi', 'dosenPengampu'])->get();
         $prodis = ProgramStudi::where('status', 'aktif')->get();
+        $dosens = Dosen::where('status', 'aktif')->select('nip', 'nama')->get();
 
         return Inertia::render('MataKuliah/Index', [
             'courses' => $courses,
             'prodis' => $prodis,
+            'dosens' => $dosens,
         ]);
     }
 
@@ -309,17 +338,10 @@ class AdminController extends Controller
             'sks' => 'required|integer|min:1|max:8',
             'kode_prodi' => 'required|string|exists:program_studis,kode_prodi',
             'semester' => 'required|integer|min:1|max:8',
-            'teori' => 'boolean',
-            'praktek' => 'boolean',
+            'nip_dosen' => 'nullable|string|exists:dosens,nip',
         ]);
 
-        if (!$request->teori && !$request->praktek) {
-            return redirect()->back()->withErrors(['teori' => 'Pilih setidaknya salah satu tipe: Teori atau Praktek.']);
-        }
-
-        MataKuliah::create($request->only('kode_mk', 'nama_mk', 'sks', 'kode_prodi', 'semester') + [
-            'teori' => $request->teori ? 1 : 0,
-            'praktek' => $request->praktek ? 1 : 0,
+        MataKuliah::create($request->only('kode_mk', 'nama_mk', 'sks', 'kode_prodi', 'semester', 'nip_dosen') + [
             'status' => 'aktif'
         ]);
 
@@ -337,18 +359,10 @@ class AdminController extends Controller
             'kode_prodi' => 'required|string|exists:program_studis,kode_prodi',
             'semester' => 'required|integer|min:1|max:8',
             'status' => 'required|in:aktif,nonaktif',
-            'teori' => 'boolean',
-            'praktek' => 'boolean',
+            'nip_dosen' => 'nullable|string|exists:dosens,nip',
         ]);
 
-        if (!$request->teori && !$request->praktek) {
-            return redirect()->back()->withErrors(['teori' => 'Pilih setidaknya salah satu tipe: Teori atau Praktek.']);
-        }
-
-        $course->update($request->only('nama_mk', 'sks', 'kode_prodi', 'semester', 'status') + [
-            'teori' => $request->teori ? 1 : 0,
-            'praktek' => $request->praktek ? 1 : 0,
-        ]);
+        $course->update($request->only('nama_mk', 'sks', 'kode_prodi', 'semester', 'status', 'nip_dosen'));
 
         $this->log("Mengubah mata kuliah: {$request->nama_mk} ({$kode_mk})");
         return redirect()->back()->with('success', 'Mata Kuliah berhasil diubah.');
@@ -358,6 +372,11 @@ class AdminController extends Controller
     {
         $course = MataKuliah::findOrFail($kode_mk);
         $name = $course->nama_mk;
+
+        if (JadwalUjian::where('kode_mk', $kode_mk)->exists()) {
+            return redirect()->back()->with('error', 'Gagal menghapus: Mata kuliah ini memiliki jadwal ujian yang aktif.');
+        }
+
         $course->delete();
 
         $this->log("Menghapus mata kuliah: {$name} ({$kode_mk})");
@@ -367,11 +386,30 @@ class AdminController extends Controller
     // --- CRUD Jadwal Ujian ---
     public function jadwalIndex()
     {
-        $schedules = JadwalUjian::with(['mataKuliah', 'dosen', 'pesertaUjians.mahasiswa'])->get();
-        $dosens = Dosen::where('status', 'aktif')->get();
-        $courses = MataKuliah::where('status', 'aktif')->get();
-        $mahasiswas = Mahasiswa::where('status', 'aktif')->get();
-        $prodis = ProgramStudi::where('status', 'aktif')->get();
+        $schedules = JadwalUjian::with([
+            'mataKuliah.dosenPengampu',
+            'dosen',
+            'pesertaUjians' => function ($q) {
+                $q->select('id', 'jadwal_ujian_id', 'nim');
+            },
+            'beritaAcara'
+        ])->get();
+
+        $dosens = Dosen::where('status', 'aktif')
+            ->select('nip', 'nama')
+            ->get();
+
+        $courses = MataKuliah::where('status', 'aktif')
+            ->select('kode_mk', 'nama_mk', 'semester', 'kode_prodi')
+            ->get();
+
+        $mahasiswas = Mahasiswa::where('status', 'aktif')
+            ->select('nim', 'nama', 'kelas', 'kode_prodi')
+            ->get();
+
+        $prodis = ProgramStudi::where('status', 'aktif')
+            ->select('kode_prodi', 'nama_prodi')
+            ->get();
 
         return Inertia::render('Jadwal/Index', [
             'schedules' => $schedules,
@@ -399,33 +437,91 @@ class AdminController extends Controller
             'student_nims' => 'required|array',
         ]);
 
-        $course = MataKuliah::findOrFail($request->kode_mk);
-        if ($course->teori && !$course->praktek) {
-            $dosen = Dosen::findOrFail($request->nip_dosen);
-            $ampuMK = is_array($dosen->ampu_mata_kuliah) ? $dosen->ampu_mata_kuliah : [];
-            $ampuKelas = is_array($dosen->ampu_kelas) ? $dosen->ampu_kelas : [];
+        $kode_mk = $request->kode_mk;
+        $nip_dosen = $request->nip_dosen;
+        $tanggal = $request->tanggal;
+        $jam_mulai = $request->jam_mulai;
+        $jam_selesai = $request->jam_selesai;
+        $ruang = $request->ruang;
+        $student_nims = $request->student_nims;
 
-            $isAmpuCourse = in_array($request->kode_mk, $ampuMK);
-            $isAmpuClass = false;
-            foreach ($ampuKelas as $k) {
-                if (strcasecmp(trim($k), trim($request->kelas)) === 0) {
-                    $isAmpuClass = true;
-                    break;
-                }
-            }
+        $mataKuliah = MataKuliah::findOrFail($kode_mk);
+        $isPraktek = \Illuminate\Support\Str::contains(strtolower($mataKuliah->nama_mk), ['praktek', 'praktikum', 'prak']);
 
-            if ($isAmpuCourse && $isAmpuClass) {
-                return redirect()->back()->withErrors([
-                    'nip_dosen' => "Dosen {$dosen->nama} adalah Dosen Pengampu Teori untuk mata kuliah {$course->nama_mk} di kelas {$request->kelas} dan tidak dapat dipilih sebagai pengawas ujian."
-                ])->withInput();
-            }
+        // D. Supervisor must NOT be the course lecturer
+        if ($mataKuliah->nip_dosen === $nip_dosen) {
+            return back()->withErrors(['nip_dosen' => "Dosen Pengampu tidak boleh mengawas ujian mata kuliah yang diampunya sendiri."]);
+        }
+
+        if (strtotime($jam_mulai) >= strtotime($jam_selesai)) {
+            return back()->withErrors(['jam_selesai' => "Jam selesai harus lebih akhir dari jam mulai."]);
+        }
+
+        $semester_aktif = $request->semester_aktif;
+        $isSemGanjil = \Illuminate\Support\Str::contains(strtolower($semester_aktif), 'ganjil');
+        $isSemGenap = \Illuminate\Support\Str::contains(strtolower($semester_aktif), 'genap');
+
+        if ($isSemGanjil && $mataKuliah->semester % 2 === 0) {
+            return back()->withErrors(['kode_mk' => "Mata kuliah {$mataKuliah->nama_mk} (Semester {$mataKuliah->semester}) tidak dapat dijadwalkan pada semester aktif Ganjil."]);
+        }
+        if ($isSemGenap && $mataKuliah->semester % 2 !== 0) {
+            return back()->withErrors(['kode_mk' => "Mata kuliah {$mataKuliah->nama_mk} (Semester {$mataKuliah->semester}) tidak dapat dijadwalkan pada semester aktif Genap."]);
+        }
+
+        // 1. Check Room Conflict
+        $roomConflict = JadwalUjian::where('tanggal', $tanggal)
+            ->where('ruang', $ruang)
+            ->where('kode_mk', '!=', $kode_mk)
+            ->where(function ($query) use ($jam_mulai, $jam_selesai) {
+                $query->where('jam_mulai', '<', $jam_selesai)
+                      ->where('jam_selesai', '>', $jam_mulai);
+            })
+            ->with('mataKuliah')
+            ->first();
+
+        if ($roomConflict) {
+            return back()->withErrors(['ruang' => "Jadwal tabrakan: Ruang {$ruang} sudah digunakan oleh mata kuliah {$roomConflict->mataKuliah->nama_mk} pada jam ini."]);
+        }
+
+        // 2. Check Lecturer Conflict
+        $lecturerConflict = JadwalUjian::where('tanggal', $tanggal)
+            ->where('nip_dosen', $nip_dosen)
+            ->where('kode_mk', '!=', $kode_mk)
+            ->where(function ($query) use ($jam_mulai, $jam_selesai) {
+                $query->where('jam_mulai', '<', $jam_selesai)
+                      ->where('jam_selesai', '>', $jam_mulai);
+            })
+            ->with(['dosen', 'mataKuliah'])
+            ->first();
+
+        if ($lecturerConflict) {
+            return back()->withErrors(['nip_dosen' => "Jadwal tabrakan: Pengawas {$lecturerConflict->dosen->nama} sudah menjadwalkan pengawasan lain ({$lecturerConflict->mataKuliah->nama_mk}) pada jam ini."]);
+        }
+
+        // 3. Check Student Conflict
+        $studentConflict = PesertaUjian::whereIn('nim', $student_nims)
+            ->whereHas('jadwalUjian', function ($query) use ($tanggal, $jam_mulai, $jam_selesai) {
+                $query->where('tanggal', $tanggal)
+                    ->where('jam_mulai', '<', $jam_selesai)
+                    ->where('jam_selesai', '>', $jam_mulai);
+            })
+            ->with(['mahasiswa', 'jadwalUjian.mataKuliah'])
+            ->first();
+
+        if ($studentConflict) {
+            return back()->withErrors([
+                'student_nims' => "Jadwal tabrakan: Mahasiswa {$studentConflict->mahasiswa->nama} ({$studentConflict->nim}) sudah terdaftar di ujian {$studentConflict->jadwalUjian->mataKuliah->nama_mk} pada jam ini."
+            ]);
         }
 
         DB::transaction(function () use ($request) {
             $jadwal = JadwalUjian::create($request->only(
                 'kode_mk', 'nip_dosen', 'tanggal', 'sesi', 'jam_mulai', 'jam_selesai',
                 'ruang', 'kelas', 'jenis_ujian', 'semester_aktif', 'tahun_akademik'
-            ) + ['status' => 'terjadwal']);
+            ) + [
+                'status' => 'terjadwal',
+                'token' => strtoupper(\Illuminate\Support\Str::random(6)),
+            ]);
 
             foreach ($request->student_nims as $nim) {
                 PesertaUjian::create([
@@ -460,26 +556,84 @@ class AdminController extends Controller
             'student_nims' => 'required|array',
         ]);
 
-        $course = MataKuliah::findOrFail($request->kode_mk);
-        if ($course->teori && !$course->praktek) {
-            $dosen = Dosen::findOrFail($request->nip_dosen);
-            $ampuMK = is_array($dosen->ampu_mata_kuliah) ? $dosen->ampu_mata_kuliah : [];
-            $ampuKelas = is_array($dosen->ampu_kelas) ? $dosen->ampu_kelas : [];
+        $kode_mk = $request->kode_mk;
+        $nip_dosen = $request->nip_dosen;
+        $tanggal = $request->tanggal;
+        $jam_mulai = $request->jam_mulai;
+        $jam_selesai = $request->jam_selesai;
+        $ruang = $request->ruang;
+        $student_nims = $request->student_nims;
 
-            $isAmpuCourse = in_array($request->kode_mk, $ampuMK);
-            $isAmpuClass = false;
-            foreach ($ampuKelas as $k) {
-                if (strcasecmp(trim($k), trim($request->kelas)) === 0) {
-                    $isAmpuClass = true;
-                    break;
-                }
-            }
+        $mataKuliah = MataKuliah::findOrFail($kode_mk);
+        $isPraktek = \Illuminate\Support\Str::contains(strtolower($mataKuliah->nama_mk), ['praktek', 'praktikum', 'prak']);
 
-            if ($isAmpuCourse && $isAmpuClass) {
-                return redirect()->back()->withErrors([
-                    'nip_dosen' => "Dosen {$dosen->nama} adalah Dosen Pengampu Teori untuk mata kuliah {$course->nama_mk} di kelas {$request->kelas} dan tidak dapat dipilih sebagai pengawas ujian."
-                ])->withInput();
-            }
+        // D. Supervisor must NOT be the course lecturer
+        if ($mataKuliah->nip_dosen === $nip_dosen) {
+            return back()->withErrors(['nip_dosen' => "Dosen Pengampu tidak boleh mengawas ujian mata kuliah yang diampunya sendiri."]);
+        }
+
+        if (strtotime($jam_mulai) >= strtotime($jam_selesai)) {
+            return back()->withErrors(['jam_selesai' => "Jam selesai harus lebih akhir dari jam mulai."]);
+        }
+
+        $semester_aktif = $request->semester_aktif;
+        $isSemGanjil = \Illuminate\Support\Str::contains(strtolower($semester_aktif), 'ganjil');
+        $isSemGenap = \Illuminate\Support\Str::contains(strtolower($semester_aktif), 'genap');
+
+        if ($isSemGanjil && $mataKuliah->semester % 2 === 0) {
+            return back()->withErrors(['kode_mk' => "Mata kuliah {$mataKuliah->nama_mk} (Semester {$mataKuliah->semester}) tidak dapat dijadwalkan pada semester aktif Ganjil."]);
+        }
+        if ($isSemGenap && $mataKuliah->semester % 2 !== 0) {
+            return back()->withErrors(['kode_mk' => "Mata kuliah {$mataKuliah->nama_mk} (Semester {$mataKuliah->semester}) tidak dapat dijadwalkan pada semester aktif Genap."]);
+        }
+
+        // 1. Check Room Conflict
+        $roomConflict = JadwalUjian::where('tanggal', $tanggal)
+            ->where('id', '!=', $id)
+            ->where('ruang', $ruang)
+            ->where('kode_mk', '!=', $kode_mk)
+            ->where(function ($query) use ($jam_mulai, $jam_selesai) {
+                $query->where('jam_mulai', '<', $jam_selesai)
+                      ->where('jam_selesai', '>', $jam_mulai);
+            })
+            ->with('mataKuliah')
+            ->first();
+
+        if ($roomConflict) {
+            return back()->withErrors(['ruang' => "Jadwal tabrakan: Ruang {$ruang} sudah digunakan oleh mata kuliah {$roomConflict->mataKuliah->nama_mk} pada jam ini."]);
+        }
+
+        // 2. Check Lecturer Conflict
+        $lecturerConflict = JadwalUjian::where('tanggal', $tanggal)
+            ->where('id', '!=', $id)
+            ->where('nip_dosen', $nip_dosen)
+            ->where('kode_mk', '!=', $kode_mk)
+            ->where(function ($query) use ($jam_mulai, $jam_selesai) {
+                $query->where('jam_mulai', '<', $jam_selesai)
+                      ->where('jam_selesai', '>', $jam_mulai);
+            })
+            ->with(['dosen', 'mataKuliah'])
+            ->first();
+
+        if ($lecturerConflict) {
+            return back()->withErrors(['nip_dosen' => "Jadwal tabrakan: Pengawas {$lecturerConflict->dosen->nama} sudah menjadwalkan pengawasan lain ({$lecturerConflict->mataKuliah->nama_mk}) pada jam ini."]);
+        }
+
+        // 3. Check Student Conflict
+        $studentConflict = PesertaUjian::whereIn('nim', $student_nims)
+            ->whereHas('jadwalUjian', function ($query) use ($id, $tanggal, $jam_mulai, $jam_selesai) {
+                $query->where('id', '!=', $id)
+                    ->where('tanggal', $tanggal)
+                    ->where('jam_mulai', '<', $jam_selesai)
+                    ->where('jam_selesai', '>', $jam_mulai);
+            })
+            ->with(['mahasiswa', 'jadwalUjian.mataKuliah'])
+            ->first();
+
+        if ($studentConflict) {
+            return back()->withErrors([
+                'student_nims' => "Jadwal tabrakan: Mahasiswa {$studentConflict->mahasiswa->nama} ({$studentConflict->nim}) sudah terdaftar di ujian {$studentConflict->jadwalUjian->mataKuliah->nama_mk} pada jam ini."
+            ]);
         }
 
         DB::transaction(function () use ($request, $jadwal) {
@@ -513,12 +667,103 @@ class AdminController extends Controller
     }
 
     // --- Berita Acara (BAU) List & Validation ---
+    // --- Permohonan Penggantian Pengawas ---
+    public function permohonanPenggantianIndex()
+    {
+        $permohonan = PermohonanGantiPengawas::with(['jadwalUjian.mataKuliah', 'pemohon', 'pengganti'])
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        $dosens = Dosen::where('status', 'aktif')->select('nip', 'nama')->get();
+
+        return Inertia::render('Admin/PermohonanPenggantian', [
+            'permohonan' => $permohonan,
+            'dosens' => $dosens,
+        ]);
+    }
+
+    public function approvePermohonanPenggantian(Request $request, $id)
+    {
+        $request->validate([
+            'dosen_pengganti_nip' => 'required|exists:dosens,nip',
+        ]);
+
+        $permohonan = PermohonanGantiPengawas::findOrFail($id);
+
+        if ($permohonan->status !== 'pending') {
+            return back()->withErrors(['error' => 'Permohonan ini sudah diproses sebelumnya.']);
+        }
+
+        DB::transaction(function () use ($request, $permohonan) {
+            $permohonan->update([
+                'status' => 'disetujui',
+                'dosen_pengganti_nip' => $request->dosen_pengganti_nip,
+            ]);
+
+            $permohonan->jadwalUjian->update([
+                'nip_dosen' => $request->dosen_pengganti_nip,
+            ]);
+        });
+
+        $this->log("Menyetujui permohonan penggantian pengawas (ID: {$id}) dan menugaskan Dosen {$request->dosen_pengganti_nip}");
+
+        return redirect()->back()->with('success', 'Permohonan disetujui. Pengawas jadwal ujian telah diganti.');
+    }
+
+    public function rejectPermohonanPenggantian($id)
+    {
+        $permohonan = PermohonanGantiPengawas::findOrFail($id);
+
+        if ($permohonan->status !== 'pending') {
+            return back()->withErrors(['error' => 'Permohonan ini sudah diproses sebelumnya.']);
+        }
+
+        $permohonan->update([
+            'status' => 'ditolak',
+        ]);
+
+        $this->log("Menolak permohonan penggantian pengawas (ID: {$id})");
+
+        return redirect()->back()->with('success', 'Permohonan telah ditolak.');
+    }
+
+    public function cetakSuratPermohonan($id)
+    {
+        $permohonan = PermohonanGantiPengawas::with(['jadwalUjian.mataKuliah.dosenPengampu', 'pemohon', 'pengganti', 'jadwalUjian.mataKuliah.programStudi'])
+            ->findOrFail($id);
+
+        $days = ['Sunday' => 'Minggu', 'Monday' => 'Senin', 'Tuesday' => 'Selasa', 'Wednesday' => 'Rabu', 'Thursday' => 'Kamis', 'Friday' => 'Jumat', 'Saturday' => 'Sabtu'];
+        $months = ['01' => 'Januari', '02' => 'Februari', '03' => 'Maret', '04' => 'April', '05' => 'Mei', '06' => 'Juni', '07' => 'Juli', '08' => 'Agustus', '09' => 'September', '10' => 'Oktober', '11' => 'November', '12' => 'Desember'];
+
+        $dt = new \DateTime($permohonan->created_at);
+        $dayName = $days[$dt->format('l')];
+        $dayNum = $dt->format('d');
+        $monthName = $months[$dt->format('m')];
+        $year = $dt->format('Y');
+
+        $dtUjian = new \DateTime($permohonan->jadwalUjian->tanggal);
+        $ujianDayName = $days[$dtUjian->format('l')];
+
+        $pdf = Pdf::loadView('pdf.surat_permohonan_penggantian', [
+            'permohonan' => $permohonan,
+            'dayName' => $dayName,
+            'dayNum' => $dayNum,
+            'monthName' => $monthName,
+            'year' => $year,
+            'ujianDayName' => $ujianDayName,
+        ]);
+
+        return $pdf->stream("Surat_Permohonan_Penggantian_Jadwal_{$permohonan->pemohon->nama}.pdf");
+    }
+
     public function beritaAcaraIndex()
     {
         $baus = BeritaAcara::with(['jadwalUjian.mataKuliah', 'jadwalUjian.dosen'])->get();
+        $dosens = Dosen::where('status', 'aktif')->select('nip', 'nama')->get();
 
         return Inertia::render('Admin/BeritaAcara', [
             'baus' => $baus,
+            'dosens' => $dosens,
         ]);
     }
 
@@ -541,12 +786,12 @@ class AdminController extends Controller
         }
 
         $this->log("Memvalidasi berita acara ujian ID #{$id} menjadi: {$request->status_validasi}");
-        return redirect()->back()->with('success', 'Status validasi Berita Acara berhasil diperbarui.');
+        return redirect()->back()->with('success', 'Status validasi BERITA UJIAN berhasil diperbarui.');
     }
 
     public function printBeritaAcaraPdf($id)
     {
-        $bau = BeritaAcara::with(['jadwalUjian.mataKuliah', 'jadwalUjian.dosen', 'jadwalUjian.pesertaUjians.mahasiswa'])
+        $bau = BeritaAcara::with(['jadwalUjian.mataKuliah.dosenPengampu', 'jadwalUjian.dosen', 'jadwalUjian.pesertaUjians.mahasiswa'])
             ->findOrFail($id);
 
         $days = ['Sunday' => 'Minggu', 'Monday' => 'Senin', 'Tuesday' => 'Selasa', 'Wednesday' => 'Rabu', 'Thursday' => 'Kamis', 'Friday' => 'Jumat', 'Saturday' => 'Sabtu'];
@@ -564,6 +809,7 @@ class AdminController extends Controller
             'dayNum' => $dayNum,
             'monthName' => $monthName,
             'year' => $year,
+            'qrCode' => $bau->generateQrCode(),
         ]);
 
         return $pdf->stream("Berita_Acara_Ujian_{$bau->jadwalUjian->mataKuliah->nama_mk}_{$bau->jadwalUjian->kelas}.pdf");
@@ -683,22 +929,22 @@ class AdminController extends Controller
         
         // Title
         $sheet->setCellValue('A1', 'LAPORAN REKAPITULASI BERITA ACARA UJIAN (BAU)');
-        $sheet->mergeCells('A1:I1');
+        $sheet->mergeCells('A1:J1');
         $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
         
         $sheet->setCellValue('A2', 'FAKULTAS EKONOMI - UNIVERSITAS METHODIST INDONESIA');
-        $sheet->mergeCells('A2:I2');
+        $sheet->mergeCells('A2:J2');
         $sheet->getStyle('A2')->getFont()->setBold(true)->setSize(11);
         
         // Subtitle/Filters
         $periodText = ($request->start_date && $request->end_date) ? "Periode: {$request->start_date} s/d {$request->end_date}" : "Periode: Semua";
         $sheet->setCellValue('A3', $periodText);
-        $sheet->mergeCells('A3:I3');
+        $sheet->mergeCells('A3:J3');
         $sheet->getStyle('A3')->getFont()->setItalic(true);
 
         // Headers
-        $headers = ['No', 'Kode MK', 'Nama Mata Kuliah', 'Dosen Penguji', 'Tanggal', 'Kelas', 'Hadir', 'Absen', 'Status Validasi'];
-        $cols = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
+        $headers = ['No', 'Kode MK', 'Nama Mata Kuliah', 'Pengawas', 'Tanggal', 'Kelas', 'Token', 'Hadir', 'Absen', 'Status Validasi'];
+        $cols = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
         foreach ($headers as $colIdx => $header) {
             $sheet->setCellValue($cols[$colIdx] . '5', $header);
             $sheet->getStyle($cols[$colIdx] . '5')->getFont()->setBold(true);
@@ -713,9 +959,10 @@ class AdminController extends Controller
             $sheet->setCellValue('D' . $rowIdx, $b->jadwalUjian->dosen->nama);
             $sheet->setCellValue('E' . $rowIdx, $b->jadwalUjian->tanggal);
             $sheet->setCellValue('F' . $rowIdx, $b->jadwalUjian->kelas);
-            $sheet->setCellValue('G' . $rowIdx, $b->jumlah_hadir);
-            $sheet->setCellValue('H' . $rowIdx, $b->jumlah_absen);
-            $sheet->setCellValue('I' . $rowIdx, $b->status_validasi === 'tervalidasi' ? 'Valid' : 'Pending');
+            $sheet->setCellValue('G' . $rowIdx, $b->jadwalUjian->token);
+            $sheet->setCellValue('H' . $rowIdx, $b->jumlah_hadir);
+            $sheet->setCellValue('I' . $rowIdx, $b->jumlah_absen);
+            $sheet->setCellValue('J' . $rowIdx, $b->status_validasi === 'tervalidasi' ? 'Valid' : 'Pending');
             $rowIdx++;
         }
 
@@ -738,9 +985,49 @@ class AdminController extends Controller
     public function pengaturanIndex()
     {
         $users = User::all();
+        $securitySettings = [
+            'attendance_token_enabled' => \App\Models\Setting::getValue('attendance_token_enabled', true),
+            'attendance_gps_enabled'   => \App\Models\Setting::getValue('attendance_gps_enabled', false),
+            'attendance_ip_enabled'    => \App\Models\Setting::getValue('attendance_ip_enabled', false),
+            'campus_latitude'          => \App\Models\Setting::getValue('campus_latitude', -5.1476),
+            'campus_longitude'         => \App\Models\Setting::getValue('campus_longitude', 119.4328),
+            'campus_radius'            => \App\Models\Setting::getValue('campus_radius', 100),
+            'campus_ip_whitelist'      => \App\Models\Setting::getValue('campus_ip_whitelist', '127.0.0.1, 192.168.1.0/24'),
+        ];
+
         return Inertia::render('Admin/Pengaturan', [
             'users' => $users,
+            'securitySettings' => $securitySettings,
         ]);
+    }
+
+    public function updateSecuritySettings(Request $request)
+    {
+        $request->validate([
+            'attendance_token_enabled' => 'required|boolean',
+            'attendance_gps_enabled'   => 'required|boolean',
+            'attendance_ip_enabled'    => 'required|boolean',
+            'campus_latitude'          => 'required|numeric',
+            'campus_longitude'         => 'required|numeric',
+            'campus_radius'            => 'required|integer|min:5',
+            'campus_ip_whitelist'      => 'nullable|string',
+        ]);
+
+        \App\Models\Setting::setValue('attendance_token_enabled', $request->attendance_token_enabled);
+        \App\Models\Setting::setValue('attendance_gps_enabled', $request->attendance_gps_enabled);
+        \App\Models\Setting::setValue('attendance_ip_enabled', $request->attendance_ip_enabled);
+        \App\Models\Setting::setValue('campus_latitude', $request->campus_latitude);
+        \App\Models\Setting::setValue('campus_longitude', $request->campus_longitude);
+        \App\Models\Setting::setValue('campus_radius', $request->campus_radius);
+        \App\Models\Setting::setValue('campus_ip_whitelist', $request->campus_ip_whitelist ?: '');
+
+        $this->log("Memperbarui konfigurasi keamanan absensi ujian mahasiswa");
+        return redirect()->back()->with('success', 'Pengaturan keamanan absensi berhasil diperbarui.');
+    }
+
+    public function panduanIndex()
+    {
+        return Inertia::render('Admin/Panduan');
     }
 
     public function updateProfile(Request $request)
@@ -801,161 +1088,7 @@ class AdminController extends Controller
         return redirect()->back()->with('success', 'Staf berhasil dihapus.');
     }
 
-    // --- Manual Excel Import route ---
-    public function importJadwal(Request $request)
-    {
-        $request->validate([
-            'excel_file' => 'required|file|mimes:xlsx,xls',
-            'jenis_ujian' => 'required|in:UTS,UAS',
-            'semester_aktif' => 'required|string',
-            'tahun_akademik' => 'required|string',
-        ]);
 
-        try {
-            $file = $request->file('excel_file');
-            $path = $file->getRealPath();
-            
-            $spreadsheet = IOFactory::load($path);
-            $sheet = $spreadsheet->getActiveSheet();
-            $rows = $sheet->toArray(null, true, true, true);
-
-            $dosenMap = Dosen::pluck('nip', 'nama')->toArray();
-            $courseMap = MataKuliah::pluck('kode_mk', 'nama_mk')->toArray();
-
-            $getOrCreateDosen = function ($name) use (&$dosenMap) {
-                $name = trim($name);
-                if (empty($name)) return '19850312001';
-                
-                if (isset($dosenMap[$name])) {
-                    return $dosenMap[$name];
-                }
-
-                $nip = '19800' . str_pad(count($dosenMap) + 1, 6, '0', STR_PAD_LEFT);
-                $dosenMap[$name] = $nip;
-
-                Dosen::create([
-                    'nip' => $nip,
-                    'nama' => $name,
-                    'kode_prodi' => 'AKT',
-                    'jabatan' => 'Lektor',
-                    'status' => 'aktif',
-                ]);
-
-                User::create([
-                    'name' => $name,
-                    'email' => strtolower(preg_replace('/[^a-z]/', '', explode(' ', $name)[0] ?? 'dosen')) . '.' . substr($nip, -4) . '@umi.ac.id',
-                    'password' => Hash::make('password123'),
-                    'role' => 'dosen',
-                    'nip' => $nip,
-                    'status' => 'aktif',
-                ]);
-
-                return $nip;
-            };
-
-            $getOrCreateCourse = function ($name, $sks) use (&$courseMap) {
-                $name = trim($name);
-                if (empty($name)) return 'MK-UNKNOWN';
-
-                if (isset($courseMap[$name])) {
-                    return $courseMap[$name];
-                }
-
-                $code = 'MAK' . str_pad(count($courseMap) + 1, 3, '0', STR_PAD_LEFT);
-                $courseMap[$name] = $code;
-
-                MataKuliah::create([
-                    'kode_mk' => $code,
-                    'nama_mk' => $name,
-                    'sks' => is_numeric($sks) ? intval($sks) : 3,
-                    'kode_prodi' => 'AKT',
-                    'semester' => 3,
-                    'status' => 'aktif',
-                ]);
-
-                return $code;
-            };
-
-            $importCount = 0;
-            $allStudents = Mahasiswa::all();
-
-            DB::transaction(function () use ($rows, $request, $getOrCreateDosen, $getOrCreateCourse, &$importCount, $allStudents) {
-                foreach ($rows as $idx => $row) {
-                    // Header detection / skip
-                    if ($idx < 5) continue;
-                    
-                    $dateVal = $row['A'] ?? $row['B'] ?? null;
-                    $jamVal = $row['B'] ?? $row['C'] ?? null;
-                    $ruang1 = $row['C'] ?? $row['D'] ?? null;
-                    $courseName = $row['E'] ?? $row['F'] ?? null;
-                    $sks = $row['F'] ?? $row['G'] ?? null;
-                    $kelas = $row['G'] ?? $row['H'] ?? null;
-                    $dosenName = $row['I'] ?? $row['J'] ?? null;
-
-                    if (empty($courseName) || $courseName === 'Mata Kuliah' || !is_numeric($sks)) continue;
-
-                    $date = $this->parseDateVal($dateVal);
-                    $times = $this->parseTimeRangeVal($jamVal);
-                    
-                    $nip = $getOrCreateDosen($dosenName);
-                    $kode_mk = $getOrCreateCourse($courseName, $sks);
-
-                    $jadwal = JadwalUjian::create([
-                        'kode_mk' => $kode_mk,
-                        'nip_dosen' => $nip,
-                        'tanggal' => $date,
-                        'sesi' => $request->jenis_ujian . ' Sesi',
-                        'jam_mulai' => $times[0],
-                        'jam_selesai' => $times[1],
-                        'ruang' => $ruang1 ?: 'R.101',
-                        'kelas' => $kelas ?: 'A',
-                        'jenis_ujian' => $request->jenis_ujian,
-                        'semester_aktif' => $request->semester_aktif,
-                        'tahun_akademik' => $request->tahun_akademik,
-                        'status' => 'terjadwal',
-                    ]);
-
-                    // Automatically add the class to the course's program studi if not exists
-                    $course = MataKuliah::where('kode_mk', $kode_mk)->first();
-                    if ($course) {
-                        $prodi = ProgramStudi::where('kode_prodi', $course->kode_prodi)->first();
-                        if ($prodi) {
-                            $kelasVal = $kelas ?: 'A';
-                            $daftar = $prodi->daftar_kelas ?: [];
-                            if (!in_array($kelasVal, $daftar)) {
-                                $daftar[] = $kelasVal;
-                                $prodi->daftar_kelas = $daftar;
-                                $prodi->save();
-                            }
-                        }
-                    }
-
-                    // Link 20-25 random students as participants
-                    if ($allStudents->count() > 0) {
-                        $randomStudents = $allStudents->random(min($allStudents->count(), rand(20, 25)));
-                        foreach ($randomStudents as $stud) {
-                            PesertaUjian::create([
-                                'jadwal_ujian_id' => $jadwal->id,
-                                'nim' => $stud->nim,
-                                'kehadiran' => 'belum_ditentukan',
-                            ]);
-                        }
-                    }
-
-                    $importCount++;
-                }
-            });
-
-            if ($importCount === 0) {
-                return redirect()->back()->with('error', "Gagal mengimpor data. Berkas tidak memiliki jadwal yang valid atau format kolom salah.");
-            }
-
-            $this->log("Mengimpor {$importCount} jadwal ujian baru dari Excel ({$request->jenis_ujian})");
-            return redirect()->back()->with('success', "Berhasil mengimpor {$importCount} jadwal ujian.");
-        } catch (\Exception $e) {
-            return redirect()->back()->with('error', "Terjadi kesalahan saat mengimpor jadwal: " . $e->getMessage());
-        }
-    }
 
     public function importDosen(Request $request)
     {
@@ -974,30 +1107,56 @@ class AdminController extends Controller
             $importCount = 0;
 
             DB::transaction(function () use ($rows, &$importCount) {
+                // Default column map in case headers are missing or not matching
+                $colMap = [
+                    'nip' => 'A',
+                    'nama' => 'B',
+                    'jabatan' => 'C',
+                    'email' => 'D',
+                    'ampu_mk' => 'E',
+                    'ampu_kelas' => 'F',
+                ];
+
+                // Detect headers from row 1
+                if (isset($rows[1])) {
+                    foreach ($rows[1] as $colLetter => $cellVal) {
+                        if ($cellVal === null) continue;
+                        $cellValClean = strtolower(trim($cellVal));
+                        if (str_contains($cellValClean, 'nip') || str_contains($cellValClean, 'nidn')) {
+                            $colMap['nip'] = $colLetter;
+                        } elseif (str_contains($cellValClean, 'nama') || str_contains($cellValClean, 'name')) {
+                            $colMap['nama'] = $colLetter;
+                        } elseif (str_contains($cellValClean, 'email')) {
+                            $colMap['email'] = $colLetter;
+                        } elseif (str_contains($cellValClean, 'jabatan')) {
+                            $colMap['jabatan'] = $colLetter;
+                        } elseif (str_contains($cellValClean, 'kelas') || $cellValClean === 'kls') {
+                            $colMap['ampu_kelas'] = $colLetter;
+                        } elseif (str_contains($cellValClean, 'mata kuliah') || str_contains($cellValClean, 'diampu') || $cellValClean === 'mk') {
+                            $colMap['ampu_mk'] = $colLetter;
+                        }
+                    }
+                }
+
                 foreach ($rows as $idx => $row) {
                     if ($idx === 1) continue; // Skip header
-
-                    $nip = trim($row['A'] ?? '');
-                    $nama = trim($row['B'] ?? '');
-                    $kode_prodi = trim($row['C'] ?? 'AKT');
-                    $jabatan = trim($row['D'] ?? 'Lektor');
-                    $email = trim($row['E'] ?? '');
+                    $nip = trim($row[$colMap['nip']] ?? '');
+                    $nama = trim($row[$colMap['nama']] ?? '');
+                    $kode_prodi = null; // No longer has prodi for pengawas
+                    $jabatan = trim($row[$colMap['jabatan']] ?? 'Lektor');
+                    $email = trim($row[$colMap['email']] ?? '');
                     
-                    $ampu_mata_kuliah_str = trim($row['F'] ?? '');
-                    $ampu_kelas_str = trim($row['G'] ?? '');
+                    $ampu_mata_kuliah_str = trim($row[$colMap['ampu_mk']] ?? '');
+                    $ampu_kelas_str = trim($row[$colMap['ampu_kelas']] ?? '');
 
                     $ampu_mata_kuliah = !empty($ampu_mata_kuliah_str) 
-                        ? array_map('trim', explode(',', $ampu_mata_kuliah_str)) 
+                        ? array_map(function ($mk) { return strtoupper(trim($mk)); }, explode(',', $ampu_mata_kuliah_str)) 
                         : [];
                     $ampu_kelas = !empty($ampu_kelas_str) 
-                        ? array_map('trim', explode(',', $ampu_kelas_str)) 
+                        ? array_map(function ($k) { return strtoupper(trim($k)); }, explode(',', $ampu_kelas_str)) 
                         : [];
 
                     if (empty($nip) || empty($nama)) continue;
-
-                    if (!ProgramStudi::where('kode_prodi', $kode_prodi)->exists()) {
-                        $kode_prodi = 'AKT';
-                    }
 
                     Dosen::updateOrCreate([
                         'nip' => $nip,
@@ -1006,27 +1165,7 @@ class AdminController extends Controller
                         'kode_prodi' => $kode_prodi,
                         'jabatan' => $jabatan,
                         'status' => 'aktif',
-                        'ampu_mata_kuliah' => $ampu_mata_kuliah,
-                        'ampu_kelas' => $ampu_kelas,
                     ]);
-
-                    // Automatically add classes to the Dosen's program studi if not exists
-                    $prodi = ProgramStudi::where('kode_prodi', $kode_prodi)->first();
-                    if ($prodi && !empty($ampu_kelas)) {
-                        $daftar = $prodi->daftar_kelas ?: [];
-                        $updated = false;
-                        foreach ($ampu_kelas as $kVal) {
-                            $kValClean = trim($kVal);
-                            if (!empty($kValClean) && !in_array($kValClean, $daftar)) {
-                                $daftar[] = $kValClean;
-                                $updated = true;
-                            }
-                        }
-                        if ($updated) {
-                            $prodi->daftar_kelas = $daftar;
-                            $prodi->save();
-                        }
-                    }
 
                     if (empty($email)) {
                         $emailName = strtolower(preg_replace('/[^a-z]/', '', explode(' ', $nama)[0] ?? 'dosen'));
@@ -1038,7 +1177,7 @@ class AdminController extends Controller
                     ], [
                         'name' => $nama,
                         'email' => $email,
-                        'password' => Hash::make('password123'),
+                        'password' => Hash::make('password'),
                         'role' => 'dosen',
                         'status' => 'aktif',
                     ]);
@@ -1074,15 +1213,20 @@ class AdminController extends Controller
 
             $importCount = 0;
 
-            DB::transaction(function () use ($rows, &$importCount) {
+            // Pre-compute the default password hash once to prevent execution timeouts (Bcrypt is heavy CPU work)
+            $defaultPasswordHash = \Illuminate\Support\Facades\Hash::make('password');
+
+            DB::transaction(function () use ($rows, &$importCount, $defaultPasswordHash) {
                 foreach ($rows as $idx => $row) {
                     if ($idx === 1) continue; // Skip header
 
                     $nim = trim($row['A'] ?? '');
                     $nama = trim($row['B'] ?? '');
-                    $kode_prodi = trim($row['C'] ?? 'AKT');
+                    $kode_prodi = strtoupper(trim($row['C'] ?? 'AKT'));
                     $angkatan = trim($row['D'] ?? '');
-                    $kelas = trim($row['E'] ?? '');
+                    $kelas = strtoupper(trim($row['E'] ?? 'A'));
+                    $email = trim($row['F'] ?? '');
+                    $password = trim($row['G'] ?? '');
 
                     if (empty($nim) || empty($nama)) continue;
 
@@ -1090,19 +1234,49 @@ class AdminController extends Controller
                         $angkatan = date('Y');
                     }
 
-                    if (!ProgramStudi::where('kode_prodi', $kode_prodi)->exists()) {
-                        $kode_prodi = 'AKT';
+                    if (empty($email)) {
+                        $email = $nim . '@student.umi.ac.id';
                     }
 
-                    Mahasiswa::updateOrCreate([
-                        'nim' => $nim,
-                    ], [
+                    // Reuse the precomputed hash if the password is empty or equal to 'password'
+                    $hashedPassword = $defaultPasswordHash;
+                    if (!empty($password) && $password !== 'password') {
+                        $hashedPassword = \Illuminate\Support\Facades\Hash::make($password);
+                    }
+
+                    if (!ProgramStudi::where('kode_prodi', $kode_prodi)->exists()) {
+                        $firstProdi = ProgramStudi::first();
+                        if ($firstProdi) {
+                            $kode_prodi = $firstProdi->kode_prodi;
+                        } else {
+                            $kode_prodi = 'AKT';
+                            ProgramStudi::create([
+                                'kode_prodi' => 'AKT',
+                                'nama_prodi' => 'Akuntansi',
+                                'status' => 'aktif',
+                            ]);
+                        }
+                    }
+
+                    $mahasiswaData = [
                         'nama' => $nama,
+                        'email' => $email,
                         'kode_prodi' => $kode_prodi,
                         'angkatan' => $angkatan,
                         'kelas' => $kelas ?: 'A',
                         'status' => 'aktif',
-                    ]);
+                    ];
+
+                    $existing = Mahasiswa::where('nim', $nim)->first();
+                    if (!$existing) {
+                        $mahasiswaData['password'] = $hashedPassword;
+                    } elseif (!empty(trim($row['G'] ?? ''))) {
+                        $mahasiswaData['password'] = $hashedPassword;
+                    }
+
+                    Mahasiswa::updateOrCreate([
+                        'nim' => $nim,
+                    ], $mahasiswaData);
 
                     // Automatically add classes to the Mahasiswa's program studi if not exists
                     $prodi = ProgramStudi::where('kode_prodi', $kode_prodi)->first();
@@ -1151,29 +1325,36 @@ class AdminController extends Controller
                 foreach ($rows as $idx => $row) {
                     if ($idx === 1) continue; // Skip header
 
-                    $kode_mk = trim($row['A'] ?? '');
+                    $kode_mk = strtoupper(trim($row['A'] ?? ''));
                     $nama_mk = trim($row['B'] ?? '');
                     $sks = trim($row['C'] ?? '3');
-                    $kode_prodi = trim($row['D'] ?? 'AKT');
+                    $kode_prodi = strtoupper(trim($row['D'] ?? 'AKT'));
                     $semester = trim($row['E'] ?? '1');
-                    
-                    $teori_val = strtolower(trim($row['F'] ?? ''));
-                    $praktek_val = strtolower(trim($row['G'] ?? ''));
-
-                    $teori = ($teori_val === 'y' || $teori_val === '1' || $teori_val === 'yes' || $teori_val === 'ya' || $teori_val === '') ? true : false;
-                    $praktek = ($praktek_val === 'y' || $praktek_val === '1' || $praktek_val === 'yes' || $praktek_val === 'ya') ? true : false;
-                    
-                    if (!$teori && !$praktek) {
-                        $teori = true;
-                    }
+                    $nip_dosen = trim($row['F'] ?? '');
 
                     if (empty($kode_mk) || empty($nama_mk)) continue;
 
                     if (!is_numeric($sks)) $sks = 3;
                     if (!is_numeric($semester)) $semester = 1;
 
+                    if (!empty($nip_dosen) && Dosen::where('nip', $nip_dosen)->exists()) {
+                        // NIP exists in database
+                    } else {
+                        $nip_dosen = null;
+                    }
+
                     if (!ProgramStudi::where('kode_prodi', $kode_prodi)->exists()) {
-                        $kode_prodi = 'AKT';
+                        $firstProdi = ProgramStudi::first();
+                        if ($firstProdi) {
+                            $kode_prodi = $firstProdi->kode_prodi;
+                        } else {
+                            $kode_prodi = 'AKT';
+                            ProgramStudi::create([
+                                'kode_prodi' => 'AKT',
+                                'nama_prodi' => 'Akuntansi',
+                                'status' => 'aktif',
+                            ]);
+                        }
                     }
 
                     MataKuliah::updateOrCreate([
@@ -1183,9 +1364,8 @@ class AdminController extends Controller
                         'sks' => intval($sks),
                         'kode_prodi' => $kode_prodi,
                         'semester' => intval($semester),
-                        'teori' => $teori ? 1 : 0,
-                        'praktek' => $praktek ? 1 : 0,
                         'status' => 'aktif',
+                        'nip_dosen' => $nip_dosen,
                     ]);
 
                     $importCount++;
@@ -1209,77 +1389,44 @@ class AdminController extends Controller
         $sheet = $spreadsheet->getActiveSheet();
 
         if ($type === 'dosen') {
-            $headers = ['NIP', 'Nama Dosen', 'Kode Prodi', 'Jabatan Akademik', 'Email (Opsional)', 'Mata Kuliah Diampu (Kode MK, pisah koma)', 'Kelas Diampu (pisah koma)'];
-            $sample = ['19850312001', 'Dr. John Doe, M.Si.', 'AKT', 'Lektor', 'johndoe@umi.ac.id', 'MAK101,MAK102', 'A,B'];
-            $filename = 'template_import_dosen.xlsx';
+            $headers = ['NIDN', 'Nama Pengawas', 'Jabatan Akademik', 'Email (Opsional)'];
+            $sample = ['19850312001', 'Dr. John Doe, M.Si.', 'Lektor', 'johndoe@umi.ac.id'];
+            $filename = 'template_import_pengawas.xlsx';
         } elseif ($type === 'mahasiswa') {
-            $headers = ['NIM / NPM', 'Nama Mahasiswa', 'Kode Prodi', 'Angkatan', 'Kelas'];
-            $sample = ['2101010001', 'Jane Smith', 'MNJ', '2024', 'A'];
+            $headers = ['NIM / NPM', 'Nama Mahasiswa', 'Kode Prodi', 'Angkatan', 'Kelas', 'Email (Opsional)', 'Password (Opsional)'];
+            $sample = ['2101010001', 'Jane Smith', 'MNJ', '2024', 'A', 'janesmith@student.umi.ac.id', 'password'];
             $filename = 'template_import_mahasiswa.xlsx';
         } elseif ($type === 'matakuliah') {
-            $headers = ['Kode MK', 'Nama Mata Kuliah', 'Jumlah SKS', 'Kode Prodi', 'Semester', 'Teori (Ya/Tidak)', 'Praktek (Ya/Tidak)'];
-            $sample = ['MAK101', 'Pengantar Akuntansi', '3', 'AKT', '1', 'Ya', 'Tidak'];
+            $headers = ['Kode MK', 'Nama Mata Kuliah', 'Jumlah SKS', 'Kode Prodi', 'Semester'];
+            $sample = ['MAK101', 'Pengantar Akuntansi', '3', 'AKT', '1'];
             $filename = 'template_import_matakuliah.xlsx';
         } elseif ($type === 'jadwal') {
-            // Write titles in Row 1 & 2
-            $sheet->setCellValue('A1', 'TEMPLATE IMPORT JADWAL UJIAN SIBAU');
-            $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
-            $sheet->setCellValue('A2', 'Catatan: Baris 1-4 dilewati oleh sistem. Data dimulai dari baris ke-5 sebagai header.');
-            $sheet->getStyle('A2')->getFont()->setItalic(true)->setSize(10);
-            
-            $headers = ['Hari/Tanggal', 'Jam', 'Ruang 1', 'Ruang 2', 'Mata Kuliah', 'SKS', 'Kls', 'Jml Mhs', 'Dosen'];
-            $sample = ['Senin, 08 Juni 2026', '08.30 - 10.00', 'R.301', '', 'Akuntansi Keuangan', '3', 'A', '35', 'Dr. John Doe, M.Si.'];
+            $headers = ['No', 'Hari/Tanggal', 'Jam', 'Ruang 1', 'Ruang 2', 'Mata Kuliah', 'SKS', 'Kls', 'Jml Mhs', 'Dosen'];
+            $sample = ['1', '2025-10-15', '08.00-10.00', 'R01', '', 'Pengantar Akuntansi', '3', 'A', '30', 'Dr. John Doe, M.Si.'];
             $filename = 'template_import_jadwal.xlsx';
-
-            // Set Headers on Row 5
-            foreach ($headers as $colIdx => $header) {
-                $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($colIdx + 1);
-                $sheet->setCellValue($colLetter . '5', $header);
-                $sheet->getStyle($colLetter . '5')->getFont()->setBold(true);
-            }
-
-            // Set Sample Data on Row 6
-            foreach ($sample as $colIdx => $val) {
-                $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($colIdx + 1);
-                $sheet->setCellValue($colLetter . '6', $val);
-            }
-
-            // Auto-fit column width
-            foreach ($headers as $colIdx => $header) {
-                $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($colIdx + 1);
-                $sheet->getColumnDimension($colLetter)->setAutoSize(true);
-            }
-
-            $writer = new Xlsx($spreadsheet);
             
-            return response()->stream(
-                function () use ($writer) {
-                    $writer->save('php://output');
-                },
-                200,
-                [
-                    'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                    'Content-Disposition' => 'attachment; filename="' . $filename . '"',
-                    'Cache-Control' => 'max-age=0',
-                ]
-            );
+            $sheet->setCellValue('B1', 'Jadwal Ujian Akhir Semester Ganjil 2025/2026');
+            $sheet->getStyle('B1')->getFont()->setBold(true)->setSize(14);
         } else {
             abort(404);
         }
 
-        // Set Headers (for dosen, mahasiswa, matakuliah)
+        $startRowHeader = ($type === 'jadwal') ? 6 : 1;
+        $startRowSample = ($type === 'jadwal') ? 7 : 2;
+
+        // Set Headers (for dosen, mahasiswa, matakuliah, jadwal)
         foreach ($headers as $colIdx => $header) {
             $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($colIdx + 1);
-            $sheet->setCellValue($colLetter . '1', $header);
+            $sheet->setCellValue($colLetter . $startRowHeader, $header);
             
             // Format header bold
-            $sheet->getStyle($colLetter . '1')->getFont()->setBold(true);
+            $sheet->getStyle($colLetter . $startRowHeader)->getFont()->setBold(true);
         }
 
-        // Set Sample Data (for dosen, mahasiswa, matakuliah)
+        // Set Sample Data (for dosen, mahasiswa, matakuliah, jadwal)
         foreach ($sample as $colIdx => $val) {
             $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($colIdx + 1);
-            $sheet->setCellValue($colLetter . '2', $val);
+            $sheet->setCellValue($colLetter . $startRowSample, $val);
         }
 
         // Auto-fit column width
@@ -1303,44 +1450,203 @@ class AdminController extends Controller
         );
     }
 
-    private function parseDateVal($cell)
+    public function importJadwal(Request $request)
     {
-        if (!$cell) return date('Y-m-d');
-        if ($cell instanceof \DateTime) {
-            return $cell->format('Y-m-d');
-        }
-        if (is_numeric($cell)) {
-            try {
-                return \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($cell)->format('Y-m-d');
-            } catch (\Exception $e) {}
-        }
+        $request->validate([
+            'excel_file' => 'required|file|mimes:xlsx,xls',
+        ]);
+
         try {
-            $str = preg_replace('/^(senin|selasa|rabu|kamis|jumat|sabtu|minggu),\s*/i', '', $cell);
-            $months = [
-                'januari' => 'january', 'februari' => 'february', 'maret' => 'march',
-                'april' => 'april', 'mei' => 'may', 'juni' => 'june', 'juli' => 'july',
-                'agustus' => 'august', 'september' => 'september', 'oktober' => 'october',
-                'november' => 'november', 'desember' => 'december'
-            ];
-            $str = str_ireplace(array_keys($months), array_values($months), $str);
-            $dt = new \DateTime($str);
-            return $dt->format('Y-m-d');
+            $file = $request->file('excel_file');
+            $path = $file->getRealPath();
+
+            $spreadsheet = IOFactory::load($path);
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray(null, true, true, true);
+
+            $importCount = 0;
+
+            // Extract metadata from headers
+            $title = trim($sheet->getCell('B1')->getValue() ?? '');
+            $jenis_ujian = 'UTS';
+            if (str_contains(strtolower($title), 'akhir semester') || str_contains(strtolower($title), 'uas')) {
+                $jenis_ujian = 'UAS';
+            }
+
+            $semester_aktif = 'Ganjil 2025/2026';
+            $tahun_akademik = '2025/2026';
+            if (preg_match('/(\d{4}\/\d{4})/', $title, $matches)) {
+                $tahun_akademik = $matches[1];
+                $sem = str_contains(strtolower($title), 'ganjil') ? 'Ganjil' : 'Genap';
+                $semester_aktif = $sem . ' ' . $tahun_akademik;
+            }
+
+            DB::transaction(function () use ($rows, &$importCount, $jenis_ujian, $semester_aktif, $tahun_akademik) {
+                foreach ($rows as $idx => $row) {
+                    if ($idx < 7) continue; // Skip titles and headers (starts at row 7)
+
+                    $rawDate = trim($row['B'] ?? '');
+                    $rawTime = trim($row['C'] ?? '');
+                    $ruang1 = trim($row['D'] ?? '');
+                    $ruang2 = trim($row['E'] ?? '');
+                    $nama_mk = trim($row['F'] ?? '');
+                    $kelas = trim($row['H'] ?? '');
+                    $nama_dosen = trim($row['J'] ?? '');
+
+                    // Skip empty rows
+                    if (empty($rawDate) && empty($nama_mk)) continue;
+
+                    // Parse Date
+                    try {
+                        if (is_numeric($rawDate)) {
+                            $tanggal = date('Y-m-d', \PhpOffice\PhpSpreadsheet\Shared\Date::excelToTimestamp($rawDate));
+                        } else {
+                            $dateObj = \Carbon\Carbon::parse($rawDate);
+                            $tanggal = $dateObj->format('Y-m-d');
+                        }
+                    } catch (\Exception $e) {
+                        throw new \Exception("Format tanggal '{$rawDate}' tidak valid pada baris " . $idx);
+                    }
+
+                    // Parse Time
+                    $timeParts = explode('-', $rawTime);
+                    if (count($timeParts) !== 2) {
+                        throw new \Exception("Format jam '{$rawTime}' tidak valid pada baris " . $idx);
+                    }
+                    $jam_mulai = str_replace('.', ':', trim($timeParts[0]));
+                    $jam_selesai = str_replace('.', ':', trim($timeParts[1]));
+
+                    if (strlen($jam_mulai) === 4) $jam_mulai = '0' . $jam_mulai;
+                    if (strlen($jam_selesai) === 4) $jam_selesai = '0' . $jam_selesai;
+
+                    // Find Mata Kuliah
+                    $course = MataKuliah::where('nama_mk', 'LIKE', $nama_mk)->first();
+                    if (!$course) {
+                        throw new \Exception("Mata kuliah '{$nama_mk}' tidak ditemukan di database pada baris " . $idx);
+                    }
+                    $kode_mk = $course->kode_mk;
+
+                    // Find Dosen
+                    $dosen = Dosen::where('nama', 'LIKE', $nama_dosen)->first();
+                    if (!$dosen) {
+                        throw new \Exception("Dosen Pengawas '{$nama_dosen}' tidak ditemukan di database pada baris " . $idx);
+                    }
+                    $nip_dosen = $dosen->nip;
+
+                    // Check Room Conflict
+                    if (empty($ruang1)) {
+                        throw new \Exception("Kolom Ruang 1 kosong pada baris " . $idx);
+                    }
+                    $ruang = $ruang1;
+                    if (!empty($ruang2)) {
+                        $ruang .= ' / ' . $ruang2;
+                    }
+
+                    $roomsToBook = array_filter(array_map('trim', explode('/', $ruang)));
+                    $activeSchedules = JadwalUjian::where('tanggal', $tanggal)
+                        ->where(function ($query) use ($jam_mulai, $jam_selesai) {
+                            $query->where('jam_mulai', '<', $jam_selesai)
+                                  ->where('jam_selesai', '>', $jam_mulai);
+                        })
+                        ->get();
+
+                    foreach ($activeSchedules as $existingSchedule) {
+                        if ($existingSchedule->kode_mk === $kode_mk) continue;
+                        $existingRooms = array_filter(array_map('trim', explode('/', $existingSchedule->ruang)));
+                        foreach ($roomsToBook as $rBook) {
+                            if (in_array($rBook, $existingRooms)) {
+                                throw new \Exception("Bentrok Ruangan: Ruang '{$rBook}' sudah digunakan oleh ujian mata kuliah '{$existingSchedule->mataKuliah->nama_mk}' pada jam ini (baris " . $idx . ")");
+                            }
+                        }
+                    }
+
+                    // Check Lecturer Conflict
+                    $lecturerConflict = JadwalUjian::where('tanggal', $tanggal)
+                        ->where('nip_dosen', $nip_dosen)
+                        ->where('kode_mk', '!=', $kode_mk)
+                        ->where(function ($query) use ($jam_mulai, $jam_selesai) {
+                            $query->where('jam_mulai', '<', $jam_selesai)
+                                  ->where('jam_selesai', '>', $jam_mulai);
+                        })
+                        ->first();
+
+                    if ($lecturerConflict) {
+                        throw new \Exception("Bentrok Pengawas: Dosen '{$nama_dosen}' sudah ditugaskan mengawas ujian '{$lecturerConflict->mataKuliah->nama_mk}' pada jam ini (baris " . $idx . ")");
+                    }
+
+                    // Dosen Pengampu cannot be Pengawas Check
+                    if ($course->nip_dosen === $nip_dosen) {
+                        throw new \Exception("Aturan Validasi: Dosen Pengampu '{$nama_dosen}' tidak boleh mengawas ujian mata kuliah yang diampunya sendiri (baris " . $idx . ")");
+                    }
+
+                    if (strtotime($jam_mulai) >= strtotime($jam_selesai)) {
+                        throw new \Exception("Aturan Validasi: Jam selesai harus lebih akhir dari jam mulai pada baris " . $idx);
+                    }
+
+                    $isSemGanjil = \Illuminate\Support\Str::contains(strtolower($semester_aktif), 'ganjil');
+                    $isSemGenap = \Illuminate\Support\Str::contains(strtolower($semester_aktif), 'genap');
+
+                    if ($isSemGanjil && $course->semester % 2 === 0) {
+                        throw new \Exception("Aturan Validasi: Mata kuliah '{$course->nama_mk}' (Semester {$course->semester}) tidak dapat dijadwalkan pada semester aktif Ganjil (baris " . $idx . ")");
+                    }
+                    if ($isSemGenap && $course->semester % 2 !== 0) {
+                        throw new \Exception("Aturan Validasi: Mata kuliah '{$course->nama_mk}' (Semester {$course->semester}) tidak dapat dijadwalkan pada semester aktif Genap (baris " . $idx . ")");
+                    }
+
+                    // Search for students
+                    $students = Mahasiswa::where('kelas', $kelas)->get();
+                    $studentNims = $students->pluck('nim')->toArray();
+
+                    if (!empty($studentNims)) {
+                        $studentConflict = PesertaUjian::whereIn('nim', $studentNims)
+                            ->whereHas('jadwalUjian', function ($query) use ($tanggal, $jam_mulai, $jam_selesai) {
+                                $query->where('tanggal', $tanggal)
+                                      ->where('jam_mulai', '<', $jam_selesai)
+                                      ->where('jam_selesai', '>', $jam_mulai);
+                            })
+                            ->with(['mahasiswa', 'jadwalUjian.mataKuliah'])
+                            ->first();
+
+                        if ($studentConflict) {
+                            throw new \Exception("Bentrok Mahasiswa: Mahasiswa '{$studentConflict->mahasiswa->nama}' ({$studentConflict->nim}) sudah terjadwal mengikuti ujian '{$studentConflict->jadwalUjian->mataKuliah->nama_mk}' pada jam ini (baris " . $idx . ")");
+                        }
+                    }
+
+                    // Insert Schedule
+                    $jadwal = JadwalUjian::create([
+                        'kode_mk' => $kode_mk,
+                        'nip_dosen' => $nip_dosen,
+                        'tanggal' => $tanggal,
+                        'sesi' => $idx - 6,
+                        'jam_mulai' => $jam_mulai,
+                        'jam_selesai' => $jam_selesai,
+                        'ruang' => $ruang,
+                        'kelas' => $kelas,
+                        'jenis_ujian' => $jenis_ujian,
+                        'semester_aktif' => $semester_aktif,
+                        'tahun_akademik' => $tahun_akademik,
+                        'status' => 'terjadwal',
+                        'token' => strtoupper(\Illuminate\Support\Str::random(6)),
+                    ]);
+
+                    foreach ($studentNims as $nim) {
+                        PesertaUjian::create([
+                            'jadwal_ujian_id' => $jadwal->id,
+                            'nim' => $nim,
+                            'kehadiran' => 'belum_ditentukan',
+                        ]);
+                    }
+
+                    $importCount++;
+                }
+            });
+
+            $this->log("Mengimpor {$importCount} jadwal ujian baru dari Excel");
+            return redirect()->back()->with('success', "Berhasil mengimpor {$importCount} jadwal ujian dari Excel.");
         } catch (\Exception $e) {
-            return date('Y-m-d');
+            return redirect()->back()->with('error', "Impor dibatalkan: " . $e->getMessage());
         }
     }
 
-    private function parseTimeRangeVal($jamStr)
-    {
-        if (!$jamStr) return ['08:30:00', '10:00:00'];
-        $parts = explode('-', $jamStr);
-        if (count($parts) === 2) {
-            $start = trim(str_replace('.', ':', $parts[0]));
-            $end = trim(str_replace('.', ':', $parts[1]));
-            if (strlen($start) === 5) $start .= ':00';
-            if (strlen($end) === 5) $end .= ':00';
-            return [$start, $end];
-        }
-        return ['08:30:00', '10:00:00'];
-    }
 }
+

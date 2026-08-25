@@ -24,6 +24,7 @@ class JadwalUjian extends Model
         'semester_aktif',
         'tahun_akademik',
         'status',
+        'token',
     ];
 
     public function mataKuliah()
@@ -44,5 +45,10 @@ class JadwalUjian extends Model
     public function beritaAcara()
     {
         return $this->hasOne(BeritaAcara::class, 'jadwal_ujian_id', 'id');
+    }
+
+    public function permohonanGantiPengawas()
+    {
+        return $this->hasMany(PermohonanGantiPengawas::class, 'jadwal_ujian_id');
     }
 }

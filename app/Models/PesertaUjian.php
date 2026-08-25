@@ -15,7 +15,6 @@ class PesertaUjian extends Model
         'jadwal_ujian_id',
         'nim',
         'kehadiran',
-        'nilai',
         'tanda_tangan',
     ];
 

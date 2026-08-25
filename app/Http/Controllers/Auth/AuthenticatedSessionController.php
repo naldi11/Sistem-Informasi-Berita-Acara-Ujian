@@ -33,13 +33,31 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
+        $user = Auth::user();
+        if ($user) {
+            $intended = $request->session()->get('url.intended');
+            if ($intended) {
+                $path = parse_url($intended, PHP_URL_PATH);
+                
+                // Check cross-role redirect and redirect to the correct dashboard if there is a conflict
+                if ($user->role === 'admin' && str_starts_with($path, '/dosen')) {
+                    $request->session()->forget('url.intended');
+                    return redirect()->route('admin.dashboard');
+                }
+                if ($user->role === 'dosen' && str_starts_with($path, '/admin')) {
+                    $request->session()->forget('url.intended');
+                    return redirect()->route('dosen.dashboard');
+                }
+            }
+        }
+
         return redirect()->intended(route('dashboard', absolute: false));
     }
 
     /**
      * Destroy an authenticated session.
      */
-    public function destroy(Request $request): RedirectResponse
+    public function destroy(Request $request)
     {
         Auth::guard('web')->logout();
 
@@ -47,6 +65,6 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerateToken();
 
-        return redirect('/');
+        return Inertia::location('/');
     }
 }

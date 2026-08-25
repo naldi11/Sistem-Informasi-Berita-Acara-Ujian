@@ -3,13 +3,15 @@ import { Head, useForm } from '@inertiajs/react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import SearchableSelect from '@/Components/SearchableSelect';
 
-export default function BeritaAcaraList({ baus }) {
+export default function BeritaAcaraList({ baus, dosens }) {
     const [search, setSearch] = useState('');
     const [filterStatus, setFilterStatus] = useState('Semua');
 
     const form = useForm({
         status_validasi: '',
     });
+
+
 
     const handleValidate = (id, status) => {
         if (confirm(`Apakah Anda yakin ingin memvalidasi berita acara ini menjadi: ${status.toUpperCase()}?`)) {
@@ -33,7 +35,7 @@ export default function BeritaAcaraList({ baus }) {
 
     return (
         <AuthenticatedLayout subtitle="Validasi Berita Acara Ujian (BAU)">
-            <Head title="Validasi Berita Acara - SIBAU" />
+            <Head title="Validasi Berita Acara - BERITA UJIAN" />
 
             {/* Stats Cards Split (Gambar 3.8 style) */}
             <div className="sibau-stats-grid">

@@ -46,10 +46,12 @@ class HandleInertiaRequests extends Middleware
                         'jabatan' => $request->user()->dosen->jabatan,
                     ] : null,
                 ] : null,
+                'mahasiswa' => session('mahasiswa_nim') ? \App\Models\Mahasiswa::with('programStudi')->find(session('mahasiswa_nim')) : null,
             ],
             'flash' => [
                 'success' => $request->session()->get('success'),
                 'error' => $request->session()->get('error'),
+                'examData' => $request->session()->get('examData'),
             ],
         ];
     }

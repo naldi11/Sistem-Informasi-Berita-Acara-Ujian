@@ -16,6 +16,7 @@ class AdminImportTest extends TestCase
         $this->post(route('admin.users.importDosen'))->assertRedirect(route('login'));
         $this->post(route('admin.users.importMahasiswa'))->assertRedirect(route('login'));
         $this->post(route('admin.matakuliah.import'))->assertRedirect(route('login'));
+        $this->post(route('admin.jadwal.import'))->assertRedirect(route('login'));
     }
 
     public function test_non_admin_cannot_access_imports(): void
@@ -32,6 +33,10 @@ class AdminImportTest extends TestCase
 
         $this->actingAs($dosen)
             ->post(route('admin.matakuliah.import'))
+            ->assertStatus(403);
+
+        $this->actingAs($dosen)
+            ->post(route('admin.jadwal.import'))
             ->assertStatus(403);
     }
 
@@ -85,8 +90,7 @@ class AdminImportTest extends TestCase
 
         $this->actingAs($admin)
             ->get(route('admin.templates.download', ['type' => 'jadwal']))
-            ->assertOk()
-            ->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            ->assertStatus(404);
     }
 
     public function test_dosen_profile_self_healing(): void
@@ -119,4 +123,130 @@ class AdminImportTest extends TestCase
             'status' => 'aktif',
         ]);
     }
+
+    private function createExcelFile(array $headers, array $data): UploadedFile
+    {
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        
+        foreach ($headers as $colIdx => $header) {
+            $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($colIdx + 1);
+            $sheet->setCellValue($colLetter . '1', $header);
+        }
+        
+        foreach ($data as $rowIdx => $row) {
+            foreach ($row as $colIdx => $val) {
+                $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($colIdx + 1);
+                $sheet->setCellValue($colLetter . ($rowIdx + 2), $val);
+            }
+        }
+        
+        $tempFile = tempnam(sys_get_temp_dir(), 'excel');
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        $writer->save($tempFile);
+        
+        return new UploadedFile($tempFile, 'test.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true);
+    }
+
+
+    public function test_admin_can_import_dosen(): void
+    {
+        \App\Models\ProgramStudi::create([
+            'kode_prodi' => 'AKT',
+            'nama_prodi' => 'Akuntansi',
+            'status' => 'aktif',
+        ]);
+
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $headers = ['NIDN', 'Nama Dosen', 'Jabatan Akademik', 'Email (Opsional)', 'Mata Kuliah Diampu (Kode MK, pisah koma)', 'Kelas Diampu (pisah koma)'];
+        $data = [
+            ['19850312001', 'Dr. John Doe, M.Si.', 'Lektor', 'johndoe@umi.ac.id', 'MAK101,MAK102', 'A,B']
+        ];
+
+        $excelFile = $this->createExcelFile($headers, $data);
+
+        $response = $this->actingAs($admin)
+            ->post(route('admin.users.importDosen'), ['excel_file' => $excelFile]);
+
+        $response->assertSessionHasNoErrors();
+        $response->assertRedirect();
+        
+        $this->assertDatabaseHas('dosens', [
+            'nip' => '19850312001',
+            'nama' => 'Dr. John Doe, M.Si.',
+            'kode_prodi' => null,
+        ]);
+        
+        $this->assertDatabaseHas('users', [
+            'nip' => '19850312001',
+            'role' => 'dosen',
+            'email' => 'johndoe@umi.ac.id',
+        ]);
+    }
+
+    public function test_admin_can_import_mahasiswa(): void
+    {
+        \App\Models\ProgramStudi::create([
+            'kode_prodi' => 'MNJ',
+            'nama_prodi' => 'Manajemen',
+            'status' => 'aktif',
+        ]);
+
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $headers = ['NIM / NPM', 'Nama Mahasiswa', 'Kode Prodi', 'Angkatan', 'Kelas'];
+        $data = [
+            ['2101010001', 'Jane Smith', 'MNJ', '2024', 'A']
+        ];
+
+        $excelFile = $this->createExcelFile($headers, $data);
+
+        $response = $this->actingAs($admin)
+            ->post(route('admin.users.importMahasiswa'), ['excel_file' => $excelFile]);
+
+        $response->assertSessionHasNoErrors();
+        $response->assertRedirect();
+        
+        $this->assertDatabaseHas('mahasiswas', [
+            'nim' => '2101010001',
+            'nama' => 'Jane Smith',
+            'kode_prodi' => 'MNJ',
+            'kelas' => 'A',
+        ]);
+    }
+
+    public function test_admin_can_import_matakuliah(): void
+    {
+        \App\Models\ProgramStudi::create([
+            'kode_prodi' => 'AKT',
+            'nama_prodi' => 'Akuntansi',
+            'status' => 'aktif',
+        ]);
+
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $headers = ['Kode MK', 'Nama Mata Kuliah', 'Jumlah SKS', 'Kode Prodi', 'Semester'];
+        $data = [
+            ['MAK101', 'Pengantar Akuntansi', '3', 'AKT', '1']
+        ];
+
+        $excelFile = $this->createExcelFile($headers, $data);
+
+        $response = $this->actingAs($admin)
+            ->post(route('admin.matakuliah.import'), ['excel_file' => $excelFile]);
+
+        $response->assertSessionHasNoErrors();
+        $response->assertRedirect();
+        
+        $this->assertDatabaseHas('mata_kuliahs', [
+            'kode_mk' => 'MAK101',
+            'nama_mk' => 'Pengantar Akuntansi',
+            'sks' => 3,
+            'kode_prodi' => 'AKT',
+        ]);
+    }
+
+
 }
+

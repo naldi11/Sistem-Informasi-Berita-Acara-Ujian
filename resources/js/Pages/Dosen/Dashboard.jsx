@@ -3,28 +3,44 @@ import { Head, Link } from '@inertiajs/react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 
 export default function Dashboard({ stats, todaySchedules, latestSchedules, latestLogs }) {
-    // Format date to Indonesian style (e.g., "15 Mei 2022")
     const formatIndoDate = (dateStr) => {
         if (!dateStr) return '';
         try {
             const date = new Date(dateStr);
-            return date.toLocaleDateString('id-ID', {
-                day: 'numeric',
-                month: 'short',
-                year: 'numeric'
-            });
-        } catch (e) {
-            return dateStr;
-        }
+            return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+        } catch (e) { return dateStr; }
     };
 
     const activeToday = todaySchedules[0] || null;
 
+    // Check if a schedule is today
+    const isToday = (tanggal) => {
+        const today = new Date().toISOString().split('T')[0];
+        return tanggal === today;
+    };
+
+    const getExamActiveState = (tanggal, jamMulai, jamSelesai) => {
+        const now = new Date();
+        const [year, month, day] = tanggal.split('-').map(Number);
+        const [startH, startM] = jamMulai.split(':').map(Number);
+        const [endH, endM] = jamSelesai.split(':').map(Number);
+
+        const start = new Date(year, month - 1, day, startH, startM, 0);
+        const end = new Date(year, month - 1, day, endH, endM, 0);
+
+        if (now < start) {
+            return { active: false, label: 'Belum Mulai', tooltip: `Ujian baru dimulai pukul ${jamMulai.substring(0, 5)} WIB` };
+        } else if (now > end) {
+            return { active: false, label: 'Waktu Habis', tooltip: `Batas pengisian telah lewat (hanya selama ujian berlangsung s/d pukul ${jamSelesai.substring(0, 5)} WIB)` };
+        }
+        return { active: true, label: 'Isi BAU & Absen', tooltip: 'Ujian sedang berlangsung' };
+    };
+
     return (
         <AuthenticatedLayout subtitle="Sistem Informasi Berita Acara Ujian">
-            <Head title="Dashboard Dosen - SIBAU" />
+            <Head title="Dashboard Pengawas - BERITA UJIAN" />
 
-            {/* Bab 3 Statistics Cards */}
+            {/* Statistics Cards */}
             <div className="sibau-stats-grid">
                 {/* Card 1: Ujian Berlangsung Hari Ini */}
                 <div className="sibau-card sibau-stat-card">
@@ -44,11 +60,7 @@ export default function Dashboard({ stats, todaySchedules, latestSchedules, late
                                     <div className="sibau-stat-sub">Waktu: {activeToday.jam_mulai.substring(0, 5)} - {activeToday.jam_selesai.substring(0, 5)} WIB</div>
                                 </>
                             ) : (
-                                <>
-                                    <div className="sibau-stat-sub">Tidak ada jadwal mengawas hari ini</div>
-                                    <div className="sibau-stat-sub">Ruang: -</div>
-                                    <div className="sibau-stat-sub">Waktu: -</div>
-                                </>
+                                <div className="sibau-stat-sub">Tidak ada jadwal mengawas hari ini</div>
                             )}
                         </div>
                     </div>
@@ -87,115 +99,213 @@ export default function Dashboard({ stats, todaySchedules, latestSchedules, late
                 </div>
             </div>
 
-            {/* Today's Schedules */}
-            <div className="sibau-card" style={{ padding: '20px', marginBottom: '24px', marginTop: '24px' }}>
-                <h3 style={{ margin: 0, fontSize: '11pt', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '16px' }}>
-                    JADWAL MENGAWAS HARI INI
-                </h3>
-
-                <div className="sibau-table-container">
-                    <table className="sibau-table">
-                        <thead>
-                            <tr>
-                                <th style={{ width: '40px', textAlign: 'center' }}>No</th>
-                                <th>Mata Kuliah</th>
-                                <th>Waktu</th>
-                                <th>Ruangan</th>
-                                <th>Kelas</th>
-                                <th style={{ width: '220px' }}>Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {todaySchedules.map((s, idx) => (
-                                <tr key={s.id}>
-                                    <td style={{ textAlign: 'center', fontWeight: '500' }}>{idx + 1}.</td>
-                                    <td>
-                                        <div style={{ fontWeight: '700' }}>{s.mata_kuliah.nama_mk}</div>
-                                        <div style={{ fontSize: '8pt', color: 'var(--text-muted)' }}>MK: {s.kode_mk}</div>
-                                    </td>
-                                    <td>{s.jam_mulai.substring(0, 5)} - {s.jam_selesai.substring(0, 5)} WIB</td>
-                                    <td>{s.ruang}</td>
-                                    <td>{s.kelas}</td>
-                                    <td>
-                                        <Link 
-                                            href={route('dosen.berita-acara.input', { jadwal_id: s.id })} 
-                                            className="sibau-btn sibau-btn-primary sibau-btn-sm"
-                                            style={{ textDecoration: 'none' }}
-                                        >
-                                            <svg viewBox="0 0 24 24" style={{ width: '14px', height: '14px', stroke: 'currentColor', strokeWidth: 2, fill: 'none', display: 'inline-block', marginRight: '4px' }}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                                            Isi Berita Acara & Absen
-                                        </Link>
-                                    </td>
-                                </tr>
-                            ))}
-                            {todaySchedules.length === 0 && (
-                                <tr>
-                                    <td colSpan="6" className="text-center" style={{ color: 'var(--text-muted)', padding: '24px', fontSize: '9.5pt' }}>Tidak ada jadwal mengawas hari ini. Bersantai sejenak! ☕</td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div className="sibau-grid-2">
-                {/* Latest Schedules */}
+            {/* ─── SINGLE JADWAL TABLE (no duplication) ─── */}
+            <div className="sibau-grid-2" style={{ marginTop: '24px' }}>
+                {/* Jadwal Mengawas — with inline action button for today's schedule */}
                 <div className="sibau-card" style={{ padding: '20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                        <h3 style={{ margin: 0, fontSize: '11pt', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px' }}>SEMUA JADWAL MENGAWAS</h3>
-                        <Link href={route('dosen.jadwal')} style={{ fontSize: '8.5pt', color: 'var(--text-main)', fontWeight: '700', textDecoration: 'none' }}>Lihat Semua →</Link>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <h3 style={{ margin: 0, fontSize: '11pt', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            JADWAL MENGAWAS
+                        </h3>
+                        <Link href={route('dosen.jadwal')} style={{ fontSize: '8.5pt', color: 'var(--text-main)', fontWeight: '700', textDecoration: 'none' }}>
+                            Lihat Semua →
+                        </Link>
                     </div>
 
-                    <div className="sibau-table-container">
-                        <table className="sibau-table">
-                            <thead>
-                                <tr>
-                                    <th style={{ width: '40px', textAlign: 'center' }}>No</th>
-                                    <th>Mata Kuliah</th>
-                                    <th>Tanggal / Jam</th>
-                                    <th>Ruang / Kls</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {latestSchedules.map((s, idx) => (
-                                    <tr key={s.id}>
-                                        <td style={{ textAlign: 'center', fontWeight: '500' }}>{idx + 1}.</td>
-                                        <td>
-                                            <div style={{ fontWeight: '700' }}>{s.mata_kuliah.nama_mk}</div>
-                                            <div style={{ fontSize: '8pt', color: 'var(--text-muted)' }}>MK: {s.kode_mk}</div>
-                                        </td>
-                                        <td>
-                                            <div>{formatIndoDate(s.tanggal)}</div>
-                                            <div style={{ fontSize: '8pt', color: 'var(--text-muted)' }}>Waktu: {s.jam_mulai.substring(0, 5)} - {s.jam_selesai.substring(0, 5)} WIB</div>
-                                        </td>
-                                        <td>{s.ruang} (Kls {s.kelas})</td>
-                                        <td>
-                                            <span className={`sibau-badge ${
-                                                s.status === 'terjadwal' ? 'badge-info' : 
-                                                s.status === 'berlangsung' ? 'badge-warning' : 
-                                                s.status === 'selesai' ? 'badge-success' : 'badge-danger'
-                                            }`}>
-                                                {s.status}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                    {latestSchedules.length === 0 ? (
+                        <p style={{ color: 'var(--text-muted)', fontSize: '9.5pt', textAlign: 'center', padding: '20px 0' }}>
+                            Belum ada jadwal mengawas.
+                        </p>
+                    ) : (
+                        <>
+                            {/* Mobile card list */}
+                            <div className="sibau-mobile-card-list">
+                                {latestSchedules.map((s) => {
+                                    const todayEntry = isToday(s.tanggal);
+                                    return (
+                                        <div key={s.id} style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '12px', marginBottom: '10px', background: todayEntry ? '#f0fdf4' : '#fafafa' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                                                <div style={{ fontWeight: '700', fontSize: '10pt' }}>{s.mata_kuliah.nama_mk}</div>
+                                                {s.status === 'berlangsung' && s.berita_acara?.status_validasi === 'menunggu_validasi' ? (
+                                                    <span className="sibau-badge badge-warning">
+                                                        MENUNGGU VALIDASI
+                                                    </span>
+                                                ) : (
+                                                    <span className={`sibau-badge ${s.status === 'terjadwal' ? 'badge-info' : s.status === 'berlangsung' ? 'badge-warning' : s.status === 'selesai' ? 'badge-success' : s.status === 'dibatalkan' ? 'badge-danger' : ''}`} style={{ textTransform: 'uppercase' }}>
+                                                        {s.status}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div style={{ fontSize: '8pt', color: 'var(--text-muted)', marginBottom: '4px' }}>MK: {s.kode_mk}</div>
+                                            <div style={{ display: 'flex', gap: '12px', fontSize: '8.5pt', flexWrap: 'wrap', marginTop: '6px' }}>
+                                                <span>📅 {formatIndoDate(s.tanggal)}</span>
+                                                <span>🕐 {s.jam_mulai.substring(0, 5)}–{s.jam_selesai.substring(0, 5)}</span>
+                                                <span>📍 {s.ruang} (Kls {s.kelas})</span>
+                                            </div>
+                                            {(() => {
+                                                const bau = s.berita_acara;
+                                                if (bau && bau.status_validasi !== 'draft') {
+                                                    return (
+                                                        <div style={{ marginTop: '10px', fontSize: '9pt', color: 'var(--text-muted)', fontWeight: '600', textAlign: 'center' }}>
+                                                            {bau.status_validasi === 'tervalidasi' ? '✅ Selesai' : '⏳ Telah Dikirim'}
+                                                        </div>
+                                                    );
+                                                }
+                                                if (todayEntry) {
+                                                    const state = getExamActiveState(s.tanggal, s.jam_mulai, s.jam_selesai);
+                                                    if (state.active) {
+                                                        return (
+                                                            <div style={{ marginTop: '10px' }}>
+                                                                <Link
+                                                                    href={route('dosen.berita-acara.input', { jadwal_id: s.id })}
+                                                                    className="sibau-btn sibau-btn-primary sibau-btn-sm"
+                                                                    style={{ textDecoration: 'none', width: '100%', justifyContent: 'center' }}
+                                                                    title={state.tooltip}
+                                                                >
+                                                                    ✏️ {bau ? 'Edit BAU' : 'Isi Berita Acara & Absen'}
+                                                                </Link>
+                                                            </div>
+                                                        );
+                                                    } else {
+                                                        return (
+                                                            <div style={{ marginTop: '10px' }}>
+                                                                <button
+                                                                    className="sibau-btn sibau-btn-secondary sibau-btn-sm"
+                                                                    style={{ width: '100%', justifyContent: 'center', opacity: 0.5, cursor: 'not-allowed' }}
+                                                                    title={state.tooltip}
+                                                                    disabled
+                                                                >
+                                                                    ✏️ {state.label}
+                                                                </button>
+                                                            </div>
+                                                        );
+                                                    }
+                                                }
+                                                // For mobile view, we should still show the Pilih Pengganti button if it's today
+                                                return (
+                                                    <div style={{ marginTop: '10px' }}>
+                                                        <Link 
+                                                            href={route('dosen.delegasi')}
+                                                            className="sibau-btn sibau-btn-secondary sibau-btn-sm" 
+                                                            style={{ textDecoration: 'none', padding: '6px 10px', width: '100%', justifyContent: 'center' }}
+                                                        >
+                                                            Pilih Pengganti
+                                                        </Link>
+                                                    </div>
+                                                );
+                                            })()}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Desktop table */}
+                            <div className="sibau-table-container sibau-desktop-table">
+                                <table className="sibau-table">
+                                    <thead>
+                                        <tr>
+                                            <th style={{ width: '36px', textAlign: 'center' }}>No</th>
+                                            <th>Mata Kuliah</th>
+                                            <th>Tanggal / Jam</th>
+                                            <th>Ruang / Kls</th>
+                                            <th>Status</th>
+                                            <th>Aksi</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {latestSchedules.map((s, idx) => {
+                                            const todayEntry = isToday(s.tanggal);
+                                            return (
+                                                <tr key={s.id} style={todayEntry ? { background: '#f0fdf4' } : {}}>
+                                                    <td style={{ textAlign: 'center', fontWeight: '500' }}>{idx + 1}.</td>
+                                                    <td>
+                                                        <div style={{ fontWeight: '700' }}>{s.mata_kuliah.nama_mk}</div>
+                                                        <div style={{ fontSize: '8pt', color: 'var(--text-muted)' }}>MK: {s.kode_mk}</div>
+                                                    </td>
+                                                    <td>
+                                                        <div>{formatIndoDate(s.tanggal)}</div>
+                                                        <div style={{ fontSize: '8pt', color: 'var(--text-muted)' }}>{s.jam_mulai.substring(0, 5)} - {s.jam_selesai.substring(0, 5)} WIB</div>
+                                                    </td>
+                                                    <td>{s.ruang} (Kls {s.kelas})</td>
+                                                    <td>
+                                                        {s.status === 'berlangsung' && s.berita_acara?.status_validasi === 'menunggu_validasi' ? (
+                                                            <span className="sibau-badge badge-warning">
+                                                                MENUNGGU VALIDASI
+                                                            </span>
+                                                        ) : (
+                                                            <span className={`sibau-badge ${s.status === 'terjadwal' ? 'badge-info' : s.status === 'berlangsung' ? 'badge-warning' : s.status === 'selesai' ? 'badge-success' : s.status === 'dibatalkan' ? 'badge-danger' : ''}`} style={{ textTransform: 'uppercase' }}>
+                                                                {s.status}
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td>
+                                                        {(() => {
+                                                            const bau = s.berita_acara;
+                                                            if (bau && bau.status_validasi !== 'draft') {
+                                                                return (
+                                                                    <span className={`sibau-badge ${bau.status_validasi === 'tervalidasi' ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '8pt' }}>
+                                                                        {bau.status_validasi === 'tervalidasi' ? 'Selesai' : 'Telah Dikirim'}
+                                                                    </span>
+                                                                );
+                                                            }
+                                                            if (todayEntry) {
+                                                                const state = getExamActiveState(s.tanggal, s.jam_mulai, s.jam_selesai);
+                                                                if (state.active) {
+                                                                    return (
+                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                                            <Link
+                                                                                href={route('dosen.berita-acara.input', { jadwal_id: s.id })}
+                                                                                className="sibau-btn sibau-btn-primary sibau-btn-sm"
+                                                                                style={{ textDecoration: 'none', whiteSpace: 'nowrap' }}
+                                                                                title={state.tooltip}
+                                                                            >
+                                                                                <svg viewBox="0 0 24 24" style={{ width: '13px', height: '13px', stroke: 'currentColor', strokeWidth: 2, fill: 'none', display: 'inline-block', marginRight: '4px' }}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                                                                {bau ? 'Edit BAU' : 'Isi BAU & Absen'}
+                                                                            </Link>
+                                                                            <Link href={route('dosen.delegasi')} className="sibau-btn sibau-btn-secondary sibau-btn-sm" style={{ textDecoration: 'none', whiteSpace: 'nowrap', textAlign: 'center' }}>
+                                                                                Pilih Pengganti
+                                                                            </Link>
+                                                                        </div>
+                                                                    );
+                                                                } else {
+                                                                    return (
+                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                                            <button
+                                                                                className="sibau-btn sibau-btn-secondary sibau-btn-sm"
+                                                                                style={{ whiteSpace: 'nowrap', opacity: 0.5, cursor: 'not-allowed' }}
+                                                                                title={state.tooltip}
+                                                                                disabled
+                                                                            >
+                                                                                {state.label}
+                                                                            </button>
+                                                                            <Link href={route('dosen.delegasi')} className="sibau-btn sibau-btn-secondary sibau-btn-sm" style={{ textDecoration: 'none', whiteSpace: 'nowrap', textAlign: 'center' }}>
+                                                                                Pilih Pengganti
+                                                                            </Link>
+                                                                        </div>
+                                                                    );
+                                                                }
+                                                            }
+                                                            return <span style={{ color: 'var(--text-muted)', fontSize: '8.5pt' }}>—</span>;
+                                                        })()}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </>
+                    )}
                 </div>
 
-                {/* Latest Logs */}
+                {/* Log Aktivitas */}
                 <div className="sibau-card" style={{ padding: '20px' }}>
-                    <h3 style={{ margin: 0, fontSize: '11pt', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '20px' }}>LOG AKTIVITAS SAYA</h3>
-                    
+                    <h3 style={{ margin: 0, fontSize: '11pt', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '20px' }}>
+                        LOG AKTIVITAS SAYA
+                    </h3>
                     <div className="sibau-timeline">
                         {latestLogs.map((log) => {
-                            const timeStr = new Date(log.created_at).toLocaleTimeString('id-ID', {
-                                hour: '2-digit',
-                                minute: '2-digit'
-                            });
+                            const timeStr = new Date(log.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
                             return (
                                 <div key={log.id} className="sibau-timeline-item">
                                     <div className="sibau-timeline-badge">
@@ -208,7 +318,9 @@ export default function Dashboard({ stats, todaySchedules, latestSchedules, late
                             );
                         })}
                         {latestLogs.length === 0 && (
-                            <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)', fontSize: '9.5pt' }}>Belum ada log aktivitas.</div>
+                            <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)', fontSize: '9.5pt' }}>
+                                Belum ada log aktivitas.
+                            </div>
                         )}
                     </div>
                 </div>

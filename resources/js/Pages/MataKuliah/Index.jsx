@@ -3,7 +3,7 @@ import { Head, useForm } from '@inertiajs/react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import SearchableSelect from '@/Components/SearchableSelect';
 
-export default function Index({ courses, prodis }) {
+export default function Index({ courses, prodis, dosens = [] }) {
     const [search, setSearch] = useState('');
     const [modalOpen, setModalOpen] = useState(false);
     const [importModalOpen, setImportModalOpen] = useState(false);
@@ -30,8 +30,7 @@ export default function Index({ courses, prodis }) {
         kode_prodi: prodis[0]?.kode_prodi || '',
         semester: 1,
         status: 'aktif',
-        teori: true,
-        praktek: false,
+        nip_dosen: '',
     });
 
     const openAdd = () => {
@@ -50,8 +49,7 @@ export default function Index({ courses, prodis }) {
             kode_prodi: course.kode_prodi,
             semester: course.semester,
             status: course.status,
-            teori: !!course.teori,
-            praktek: !!course.praktek,
+            nip_dosen: course.nip_dosen || '',
         });
         form.clearErrors();
         setModalOpen(true);
@@ -76,23 +74,54 @@ export default function Index({ courses, prodis }) {
         }
     };
 
-    const filteredCourses = courses.filter(c => 
-        c.nama_mk.toLowerCase().includes(search.toLowerCase()) || 
-        c.kode_mk.toLowerCase().includes(search.toLowerCase())
-    );
+    const [filterProdi, setFilterProdi] = useState('Semua');
+    const [filterSemester, setFilterSemester] = useState('Semua');
+
+    const filteredCourses = courses
+        .filter(c => {
+            const matchesSearch = c.nama_mk.toLowerCase().includes(search.toLowerCase()) || 
+                                  c.kode_mk.toLowerCase().includes(search.toLowerCase());
+            const matchesProdi = filterProdi === 'Semua' || c.kode_prodi === filterProdi;
+            const matchesSemester = filterSemester === 'Semua' || String(c.semester) === String(filterSemester);
+            return matchesSearch && matchesProdi && matchesSemester;
+        })
+        .sort((a, b) => 
+            (a.kode_prodi || '').localeCompare(b.kode_prodi || '') || 
+            (a.semester - b.semester) || 
+            (a.kode_mk || '').localeCompare(b.kode_mk || '')
+        );
 
     return (
         <AuthenticatedLayout subtitle="Kelola Kurikulum & Daftar Mata Kuliah">
-            <Head title="Manajemen Mata Kuliah - SIBAU" />
+            <Head title="Manajemen Mata Kuliah - BERITA UJIAN" />
             <div className="sibau-card" style={{ padding: '20px', marginBottom: '24px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-                    <div style={{ display: 'flex', gap: '12px', flex: 1, maxWidth: '400px' }}>
+                    <div style={{ display: 'flex', gap: '12px', flex: 1, flexWrap: 'wrap', alignItems: 'center' }}>
                         <input 
                             type="text" 
                             className="sibau-input" 
                             placeholder="Cari nama atau kode mata kuliah..." 
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
+                            style={{ width: '260px', minWidth: '200px' }}
+                        />
+                        <SearchableSelect 
+                            options={[
+                                { value: 'Semua', label: 'Semua Program Studi' },
+                                ...prodis.map(p => ({ value: p.kode_prodi, label: `${p.nama_prodi} (${p.kode_prodi})` }))
+                            ]}
+                            value={filterProdi}
+                            onChange={(e) => setFilterProdi(e.target.value)}
+                            style={{ width: '220px' }}
+                        />
+                        <SearchableSelect 
+                            options={[
+                                { value: 'Semua', label: 'Semua Semester' },
+                                ...Array.from({ length: 8 }, (_, i) => ({ value: String(i + 1), label: `Semester ${i + 1}` }))
+                            ]}
+                            value={filterSemester}
+                            onChange={(e) => setFilterSemester(e.target.value)}
+                            style={{ width: '160px' }}
                         />
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
@@ -108,29 +137,31 @@ export default function Index({ courses, prodis }) {
                     <table className="sibau-table">
                         <thead>
                             <tr>
-                                <th style={{ width: '15%' }}>Kode MK</th>
-                                <th style={{ width: '40%' }}>Nama Mata Kuliah</th>
-                                <th style={{ width: '10%' }} className="text-center">SKS</th>
                                 <th style={{ width: '15%' }}>Program Studi</th>
                                 <th style={{ width: '10%' }} className="text-center">Semester</th>
-                                <th style={{ width: '10%' }}>Status</th>
-                                <th style={{ width: '10%' }}>Aksi</th>
+                                <th style={{ width: '10%' }}>Kode MK</th>
+                                <th style={{ width: '25%' }}>Nama Mata Kuliah</th>
+                                <th style={{ width: '10%' }} className="text-center">SKS</th>
+                                <th style={{ width: '20%' }}>Dosen Pengampu</th>
+                                <th style={{ width: '5%' }}>Status</th>
+                                <th style={{ width: '5%' }}>Aksi</th>
                             </tr>
                         </thead>
                         <tbody>
                             {filteredCourses.map((c) => (
                                 <tr key={c.kode_mk}>
+                                    <td>{c.program_studi?.nama_prodi || c.kode_prodi}</td>
+                                    <td className="text-center">Sem. {c.semester}</td>
                                     <td style={{ fontFamily: 'monospace', fontWeight: '600' }}>{c.kode_mk}</td>
                                     <td>
                                         <div style={{ fontWeight: '600' }}>{c.nama_mk}</div>
-                                        <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
-                                            {!!c.teori && <span className="sibau-badge badge-info" style={{ fontSize: '7.5pt', padding: '1px 5px' }}>Teori</span>}
-                                            {!!c.praktek && <span className="sibau-badge badge-warning" style={{ fontSize: '7.5pt', padding: '1px 5px' }}>Praktek</span>}
-                                        </div>
                                     </td>
                                     <td className="text-center">{c.sks} SKS</td>
-                                    <td>{c.program_studi?.nama_prodi || c.kode_prodi}</td>
-                                    <td className="text-center">Sem. {c.semester}</td>
+                                    <td>
+                                        <div style={{ fontSize: '9.5pt', color: c.dosen_pengampu ? 'inherit' : 'var(--text-muted)' }}>
+                                            {c.dosen_pengampu ? c.dosen_pengampu.nama : '-'}
+                                        </div>
+                                    </td>
                                     <td>
                                         <span className={`sibau-badge ${c.status === 'aktif' ? 'badge-success' : 'badge-danger'}`}>
                                             {c.status}
@@ -146,7 +177,7 @@ export default function Index({ courses, prodis }) {
                             ))}
                             {filteredCourses.length === 0 && (
                                 <tr>
-                                    <td colspan="7" className="text-center" style={{ color: 'var(--text-muted)' }}>Mata kuliah tidak ditemukan.</td>
+                                    <td colspan="8" className="text-center" style={{ color: 'var(--text-muted)' }}>Mata kuliah tidak ditemukan.</td>
                                 </tr>
                             )}
                         </tbody>
@@ -164,6 +195,28 @@ export default function Index({ courses, prodis }) {
                         </div>
                         <form onSubmit={submit}>
                             <div className="sibau-modal-body">
+                                <div className="sibau-form-group">
+                                    <label className="sibau-label">Program Studi</label>
+                                    <SearchableSelect 
+                                        options={prodis.map(p => ({ value: p.kode_prodi, label: p.nama_prodi }))}
+                                        value={form.data.kode_prodi} 
+                                        onChange={e => form.setData('kode_prodi', e.target.value)}
+                                    />
+                                    {form.errors.kode_prodi && <div style={{ color: 'red', fontSize: '9pt', marginTop: '4px' }}>{form.errors.kode_prodi}</div>}
+                                </div>
+                                <div className="sibau-form-group">
+                                    <label className="sibau-label">Semester (1 - 8)</label>
+                                    <input 
+                                        type="number" 
+                                        className="sibau-input" 
+                                        value={form.data.semester} 
+                                        onChange={e => form.setData('semester', parseInt(e.target.value))} 
+                                        min="1" 
+                                        max="8" 
+                                        required 
+                                    />
+                                    {form.errors.semester && <div style={{ color: 'red', fontSize: '9pt', marginTop: '4px' }}>{form.errors.semester}</div>}
+                                </div>
                                 <div className="sibau-form-group">
                                     <label className="sibau-label">Kode Mata Kuliah (e.g. MAK101)</label>
                                     <input 
@@ -187,62 +240,32 @@ export default function Index({ courses, prodis }) {
                                     />
                                     {form.errors.nama_mk && <div style={{ color: 'red', fontSize: '9pt', marginTop: '4px' }}>{form.errors.nama_mk}</div>}
                                 </div>
-                                <div className="sibau-form-group" style={{ display: 'flex', gap: '16px' }}>
-                                    <div style={{ flex: 1 }}>
-                                        <label className="sibau-label">Jumlah SKS</label>
-                                        <input 
-                                            type="number" 
-                                            className="sibau-input" 
-                                            value={form.data.sks} 
-                                            onChange={e => form.setData('sks', parseInt(e.target.value))} 
-                                            min="1" 
-                                            max="6" 
-                                            required 
-                                        />
-                                    </div>
-                                    <div style={{ flex: 1 }}>
-                                        <label className="sibau-label">Semester</label>
-                                        <input 
-                                            type="number" 
-                                            className="sibau-input" 
-                                            value={form.data.semester} 
-                                            onChange={e => form.setData('semester', parseInt(e.target.value))} 
-                                            min="1" 
-                                            max="8" 
-                                            required 
-                                        />
-                                    </div>
-                                </div>
                                 <div className="sibau-form-group">
-                                    <label className="sibau-label">Program Studi</label>
-                                    <SearchableSelect 
-                                        options={prodis.map(p => ({ value: p.kode_prodi, label: p.nama_prodi }))}
-                                        value={form.data.kode_prodi} 
-                                        onChange={e => form.setData('kode_prodi', e.target.value)}
+                                    <label className="sibau-label">Jumlah SKS</label>
+                                    <input 
+                                        type="number" 
+                                        className="sibau-input" 
+                                        value={form.data.sks} 
+                                        onChange={e => form.setData('sks', parseInt(e.target.value))} 
+                                        min="1" 
+                                        max="8" 
+                                        required 
                                     />
+                                    {form.errors.sks && <div style={{ color: 'red', fontSize: '9pt', marginTop: '4px' }}>{form.errors.sks}</div>}
                                 </div>
                                 <div className="sibau-form-group">
-                                    <label className="sibau-label">Tipe Mata Kuliah</label>
-                                    <div style={{ display: 'flex', gap: '24px', marginTop: '8px' }}>
-                                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '9.5pt', fontWeight: '500' }}>
-                                            <input 
-                                                type="checkbox" 
-                                                checked={form.data.teori} 
-                                                onChange={e => form.setData('teori', e.target.checked)} 
-                                            />
-                                            Teori
-                                        </label>
-                                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '9.5pt', fontWeight: '500' }}>
-                                            <input 
-                                                type="checkbox" 
-                                                checked={form.data.praktek} 
-                                                onChange={e => form.setData('praktek', e.target.checked)} 
-                                            />
-                                            Praktek
-                                        </label>
-                                    </div>
-                                    {form.errors.teori && <div style={{ color: 'red', fontSize: '9pt', marginTop: '4px' }}>{form.errors.teori}</div>}
+                                    <label className="sibau-label">Dosen Pengampu (Opsional)</label>
+                                    <SearchableSelect 
+                                        options={[
+                                            { value: '', label: '-- Pilih Dosen Pengampu (Opsional) --' },
+                                            ...dosens.map(d => ({ value: d.nip, label: `${d.nama} (${d.nip})` }))
+                                        ]}
+                                        value={form.data.nip_dosen} 
+                                        onChange={e => form.setData('nip_dosen', e.target.value)}
+                                    />
+                                    {form.errors.nip_dosen && <div style={{ color: 'red', fontSize: '9pt', marginTop: '4px' }}>{form.errors.nip_dosen}</div>}
                                 </div>
+
                                 {editingCourse && (
                                     <div className="sibau-form-group">
                                         <label className="sibau-label">Status</label>
@@ -295,7 +318,7 @@ export default function Index({ courses, prodis }) {
                                 <div style={{ fontSize: '8.5pt', color: 'var(--text-muted)', border: '1px solid var(--border-color)', padding: '10px', borderRadius: '8px', background: '#f8fafc' }}>
                                     💡 <strong>Info Format Kolom Excel:</strong><br />
                                     Data harus berada pada Sheet pertama dengan format kolom:<br />
-                                    <strong>A: Kode MK, B: Nama Mata Kuliah, C: Jumlah SKS, D: Kode Prodi (e.g. AKT, MNJ), E: Semester, F: Teori (Ya/Tidak), G: Praktek (Ya/Tidak)</strong><br />
+                                    <strong>A: Kode MK, B: Nama Mata Kuliah, C: Jumlah SKS, D: Kode Prodi (e.g. AKT, MNJ), E: Semester, F: NIP Dosen Pengampu (Opsional)</strong><br />
                                     <span style={{ fontSize: '8pt', color: '#64748b' }}>* Baris pertama diasumsikan sebagai Header (dilewati saat impor).</span>
                                 </div>
                             </div>

@@ -208,6 +208,8 @@ class DosenDashboardTest extends TestCase
             'kode_prodi' => 'AKT',
             'angkatan' => '2025',
             'kelas' => 'MI-A',
+            'email' => 'teststudent@umi.ac.id',
+            'password' => 'password123',
         ]);
 
         $response->assertRedirect();
@@ -215,6 +217,7 @@ class DosenDashboardTest extends TestCase
             'nim' => '223439999',
             'nama' => 'Test Student',
             'kelas' => 'MI-A',
+            'email' => 'teststudent@umi.ac.id',
         ]);
 
         // 2. Update Mahasiswa
@@ -224,6 +227,8 @@ class DosenDashboardTest extends TestCase
             'angkatan' => '2025',
             'kelas' => 'MI-B',
             'status' => 'aktif',
+            'email' => 'teststudent_updated@umi.ac.id',
+            'password' => 'newpassword123',
         ]);
 
         $response->assertRedirect();
@@ -231,6 +236,7 @@ class DosenDashboardTest extends TestCase
             'nim' => '223439999',
             'nama' => 'Test Student Updated',
             'kelas' => 'MI-B',
+            'email' => 'teststudent_updated@umi.ac.id',
         ]);
     }
 }
